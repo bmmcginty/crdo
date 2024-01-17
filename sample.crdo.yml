@@ -1,0 +1,14 @@
+global:
+  email: user@domain.tld
+  test: false
+  workdir: ~/run
+job1:
+  every: 1m
+  commands:
+    - echo 1 > job1.1.done
+    - echo 2 > job1.2.done
+job2:
+  every: 2m
+  depends: job1
+  commands:
+    - echo job2
