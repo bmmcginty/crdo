@@ -12,3 +12,11 @@ job2:
   depends: job1
   commands:
     - echo job2
+job3:
+  disabled: true
+  vars:
+    name: job3
+  every: 2m
+  depends: job1
+  commands:
+    - echo $name

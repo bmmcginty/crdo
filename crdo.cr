@@ -62,6 +62,8 @@ Serial
 Depend
 # wait for specific time or time interval to pass
 Wait
+# task is disabled in crontab
+Disabled
 end
 
 def parse_when(txt)
@@ -163,7 +165,8 @@ class Task
 @group : String? = nil
 @depends : String? = nil
 @global : GlobalConfig
-getter name, every, group, depends,commands, global
+@disabled=false
+getter name, every, group, depends,commands, global, disabled
 
 def when
 @when
@@ -180,6 +183,8 @@ when "group"
 @group=v.as_s
 when "depends"
 @depends=v.as_s
+when "disabled"
+@disabled=v.as_bool
 when "commands"
 v.as_a.each do |c|
 @commands << c.as_s
@@ -304,6 +309,20 @@ class ScheduleItem
 @sp : Process? = nil
 getter depends
 
+def export
+data={
+"name"=>@name,
+"depends"=>@depends,
+"last_status"=>@last_status,
+"last_stop"=>@last_stop,
+"last_start"=>@last_start,
+}
+data.to_json
+end
+
+def import(data)
+end
+
 def task
 @task
 end
@@ -414,6 +433,10 @@ ret.not_nil!
 end
 
 def should_run?
+# don't run a disabled task
+if @task.disabled
+return {WaitReason::Disabled, @task.name, 0.seconds}
+end
 # don't run the same task in parallel
 if @running
 return {WaitReason::Running, @task.name, 0.seconds}
@@ -509,6 +532,13 @@ puts "-----"
 # wait on events from any task
 #puts timeout_reasons
 select
+#when reload.receive
+#reloading=1
+#wait for all running tasks to stop
+#do not queue any further tasks
+#read crontab
+#update changed tasks
+#add new tasks
 when x=events.receive
 stopped(x)
 next
