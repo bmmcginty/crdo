@@ -9,7 +9,7 @@ job1:
     - echo 2 > job1.2.done
 job2:
   every: 2m
-  depends: job1
+  parent: job1
   commands:
     - echo job2
 job3:
@@ -17,6 +17,6 @@ job3:
   vars:
     name: job3
   every: 2m
-  depends: job1
+  parent: job1
   commands:
     - echo $name

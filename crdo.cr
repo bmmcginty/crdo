@@ -121,6 +121,7 @@ end
 end
 
 
+# stores global configuration
 class GlobalConfig
 @error=false
 @test = false
@@ -156,6 +157,7 @@ end #def
 end
 
 
+# stores settings for a single task
 class Task
 @commands=[] of String
 @vars=Hash(String,String).new
@@ -163,10 +165,10 @@ class Task
 @when : TimeMatcher? = nil
 @every : Time::Span? = nil
 @group : String? = nil
-@depends : String? = nil
+@parent : String? = nil
 @global : GlobalConfig
 @disabled=false
-getter name, every, group, depends,commands, global, disabled
+getter name, every, group, parent, commands, global, disabled
 
 def when
 @when
@@ -181,8 +183,8 @@ when "when"
 @when = parse_when(v.as_s)
 when "group"
 @group=v.as_s
-when "depends"
-@depends=v.as_s
+when "parent"
+@parent=v.as_s
 when "disabled"
 @disabled=v.as_bool
 when "commands"
@@ -233,13 +235,14 @@ end #def
 end #class
 
 
+# parses and validates crdo file
 class Crontab
 @tasks=[] of Task
 @global : GlobalConfig
 getter tasks, global
 
-def initialize
-t=YAML.parse File.read(Path["~/.crdo.yml"].expand(home: true))
+def initialize(path="~/.crdo.yml")
+t=YAML.parse File.read(Path[path].expand(home: true))
 @global=GlobalConfig.new t["global"]
 keys=t.as_h.keys.reject {|i| i=="global" }
 @tasks=keys.map {|key| Task.new(name: key.as_s, data: t[key], global: @global) }
@@ -275,11 +278,11 @@ t=task
 seen.clear
 while t
 seen << t.name
-if t.depends && seen.includes?(t.depends.not_nil!)
-raise Exception.new("task #{task.name} has a cyclical dependency of #{t.depends}")
+if t.parent && seen.includes?(t.parent.not_nil!)
+raise Exception.new("task #{task.name} has a cyclical dependency of #{t.parent}")
 end #if
-if t.depends
-t=by_name[t.depends.not_nil!]
+if t.parent
+t=by_name[t.parent.not_nil!]
 else
 t=nil
 end # if
@@ -290,6 +293,8 @@ end #def
 end #class
 
 
+# each task must have a schedule item, which holds task state.
+# Tasks come from the crontab, while ScheduleItem is imported from a save file or created fresh on each run.
 class ScheduleItem
 @errors = [] of Exception
 @schedule : Schedule
@@ -298,21 +303,19 @@ class ScheduleItem
 @last_stop : Time? = nil
 @last_status = -1
 @running = false
-# have all this tasks dependencies run?
-# if a task has dependents, (AKA children),
-# and it runs successfully,
-# it sets schedule.depends[name]=true for each child.
-# After a child runs, it sets all schedule.depends entries to false.
+# each child keeps a log of parent_name->has_successfully run status.
+# each parent sets this flag to true for each of it's children upon a successful run.
+# each child clears that flag for each of it's parents, after it itself runs.
 # so we can verify that a task is runnable per dependency requirements by
-# making sure no values in depends are false.
-@depends=Hash(String,Bool).new
+# making sure no values in parent_status are false.
+@parent_status=Hash(String,Bool).new
 @sp : Process? = nil
-getter depends
+getter parent_status
 
 def export
 data={
 "name"=>@name,
-"depends"=>@depends,
+"parent_status"=>@parent_status,
 "last_status"=>@last_status,
 "last_stop"=>@last_stop,
 "last_start"=>@last_start,
@@ -352,22 +355,22 @@ success=@last_status == 0
 if @task.global.test && @task.global.error
 success=false
 end
-if success
-# let all dependents know we've run successfully
-if @task.depends
-child=@schedule[@task.depends.not_nil!]
-child.depends[@task.name]=true
-end #if dependency
 # now that we have run,
 # we require a new run of any tasks _we depend on
-@depends.keys.each do |k|
-@depends[k]=false
+@parent_status.keys.each do |k|
+@parent_status[k]=false
 end #each parent
+if success
+# let all dependents know we've run successfully
+children=@schedule.select {|i| i.task.parent==@task.name }
+children.each do |c|
+c.parent_status[@task.name]=true
+end # each
 else # non-zero exit status
 if @task.global.mail
 args=[] of String
 args+=["-s", "task #{@task.name} exitted #{@last_status}"]
-fl=Dir.glob("cron_logs/#{@task.name}*")
+fl=Dir.glob("cron_logs/#{@task.name}.*")
 fl.each do |f|
 args+=["--attach",f]
 end # each file
@@ -387,6 +390,14 @@ end #def
 # the scheduler calls started and stopped
 # so it keeps a consistent view of tasks and their statuses.
 def run(start_channel, events_channel)
+fl=Dir.glob("cron_logs/#{@task.name}.*")
+fl.each do |fn|
+begin
+File.delete(fn)
+rescue e
+puts "error deleting #{fn}"
+end
+end # each log
 start_channel.send(Time.local)
 last_command=-1
 rc=0
@@ -394,7 +405,7 @@ rc=0
 last_command+=1
 t=@task.hydrate_command(c)
 begin
-rc=run t,idx
+rc=run args: t, idx: idx
 rescue exc
 rc=999
 @errors << exc
@@ -447,8 +458,8 @@ if @task.group && @schedule.running.any? {|i| i.task.group==@task.group }
 return {WaitReason::Serial, @task.group.not_nil!, 0.seconds}
 end
 # don't run a task if it has a prerequisit task and that task has not been completed
-if @task.depends && @depends.any? {|i| i==false }
-return {WaitReason::Depend, @task.depends.not_nil!, 0.seconds}
+if @task.parent && @parent_status[@task.parent.not_nil!] == false
+return {WaitReason::Depend, @task.parent.not_nil!, 0.seconds}
 end
 if @task.when
 return {WaitReason::Wait, "", @task.when.not_nil!.find_next(Time.local)-Time.local}
@@ -478,6 +489,8 @@ class Schedule
 @test=false
 property :test
 
+delegate :select, to: @schedule
+
 def [](name : String)
 @schedule.find! {|i| i.task.name==name }
 end
@@ -491,10 +504,10 @@ tasks.each do |t|
 @schedule << ScheduleItem.new(task: t, schedule: self)
 end
 @schedule.each do |parent|
-children=@schedule.select {|i| i.depends==parent }
+children=@schedule.select {|i| i.task.parent==parent.task.name }
 children.each do |c|
 # mark each child as needing it's parent to complete a fresh run before it can run
-c.depends[parent.task.name]=false
+c.parent_status[parent.task.name]=false
 end #each child
 end #each parent
 end #def
@@ -514,7 +527,7 @@ if reason[0].none?
 spawn do
 i.run chan, events
 end
-i.started chan.receive
+started i, chan
 else
 reasons << {i,reason}
 end #if
@@ -547,6 +560,10 @@ next
 end #select
 end #while
 end #def
+
+def started(task, chan)
+task.started chan.receive
+end
 
 def stopped(x)
 x[0].stopped(status: x[1], last_command_index: x[2], stop_time: x[3])
