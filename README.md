@@ -14,8 +14,6 @@ crystal build crdo.cr
 
 ## Todo
 
-* reparse and reload config on sighup
-* import and export (so we don't always run everything on startup)
 * Ensure that a task does not run more than once in an assigned time period (other than retry-after-error)
 * specs
 * time zones (Time.local+x.days and Time.local.shift(days: x) give different results, the ladder of these ending up in a never-ending loop)
@@ -31,6 +29,9 @@ crystal build crdo.cr
 
 ## Done
 
+* use --now to avoid writing task state for one-off runs
+* reparse and reload config on sighup
+* import and export (so we don't always run everything on startup)
 * job dependencies
 * job anti-dependencies
 

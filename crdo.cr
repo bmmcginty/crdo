@@ -1,6 +1,20 @@
 require "json"
 require "yaml"
 
+enum RunState
+Normal
+Reload
+Exit
+end
+
+
+enum DrainState
+None
+Draining
+Drained
+end
+
+
 struct TimeMatcher
 @month : Int32? = nil
 @day : Int32? = nil
@@ -294,8 +308,8 @@ end #class
 
 
 # each task must have a schedule item, which holds task state.
-# Tasks come from the crontab, while ScheduleItem is imported from a save file or created fresh on each run.
-class ScheduleItem
+# Tasks come from the crontab, while TaskState is loaded from a save file or created fresh on each run.
+class TaskState
 @errors = [] of Exception
 @schedule : Schedule
 @task : Task
@@ -312,29 +326,44 @@ class ScheduleItem
 @sp : Process? = nil
 getter parent_status
 
-def export
-data={
-"name"=>@name,
-"parent_status"=>@parent_status,
-"last_status"=>@last_status,
-"last_stop"=>@last_stop,
-"last_start"=>@last_start,
-}
-data.to_json
+def initialize(@task, @schedule)
 end
 
-def import(data)
+def to_json(json : JSON::Builder)
+json.object do
+json.field "name", @task.name
+json.field "parent_status", @parent_status
+json.field "last_status", @last_status
+json.field "last_stop", (@last_stop ? @last_stop.not_nil!.to_utc.to_unix : nil)
+json.field "last_start", (@last_start ? @last_start.not_nil!.to_utc.to_unix : nil)
+end
+end
+
+def set_state(data : JSON::Any)
+parent_status_h = Hash(String,Bool).new
+data["parent_status"].as_h.each do |k,v|
+parent_status_h[k]=v.as_bool
+end # each k,v
+@last_start = if t=data["last_start"].as_i64?
+Time.unix(t).to_local
+else
+nil
+end
+@last_stop = if t=data["last_stop"].as_i64?
+Time.unix(t).to_local
+else
+nil
+end
+@last_status = if t=data["last_status"].as_i?
+t
+else
+nil
+end
+@parent_status = parent_status_h
 end
 
 def task
 @task
-end
-
-def partial_success?
-@last_command_index<@task.commands.size
-end
-
-def initialize(@task, @schedule)
 end
 
 def running?
@@ -390,6 +419,7 @@ end #def
 # the scheduler calls started and stopped
 # so it keeps a consistent view of tasks and their statuses.
 def run(start_channel, events_channel)
+@errors.clear
 fl=Dir.glob("cron_logs/#{@task.name}.*")
 fl.each do |fn|
 begin
@@ -485,14 +515,23 @@ end #class
 
 
 class Schedule
-@schedule = [] of ScheduleItem
-@test=false
+@schedule = [] of TaskState
+@test : Bool
+@immediate : Bool
+@filter : Set(String)
 property :test
 
 delegate :select, to: @schedule
 
+def initialize(@test, @immediate, @filter)
+end
+
 def [](name : String)
 @schedule.find! {|i| i.task.name==name }
+end
+
+def []?(name : String)
+@schedule.find {|i| i.task.name==name }
 end
 
 def running
@@ -501,8 +540,12 @@ end
 
 def add_tasks(tasks)
 tasks.each do |t|
-@schedule << ScheduleItem.new(task: t, schedule: self)
+@schedule << TaskState.new(task: t, schedule: self)
 end
+clear_dependency_state
+end #def
+
+def clear_dependency_state
 @schedule.each do |parent|
 children=@schedule.select {|i| i.task.parent==parent.task.name }
 children.each do |c|
@@ -510,18 +553,86 @@ children.each do |c|
 c.parent_status[parent.task.name]=false
 end #each child
 end #each parent
-end #def
+end # def
 
-def loop(filter=nil)
-if filter
-@schedule.select! {|i| i.task.name == filter }
+def load_task_state?(path="~/.crdo.state")
+err=false
+src=Path[path].expand(home: true)
+if ! File.exists?(src)
+return false
 end
-reasons=[] of Tuple(ScheduleItem,Tuple(WaitReason, String, Time::Span))
+state=JSON.parse(File.read(src))
+state.as_a.each do |ts|
+task_state=self[ts["name"].as_s]?
+if ! task_state
+err=true
+next
+end
+task_state=task_state.not_nil!
+task_state.set_state ts
+end # each
+err==false
+end # def
+
+def save_state(path="~/.crdo.state")
+dest=Path[path].expand(home: true).to_s
+File.write(
+dest+".tmp",
+@schedule.to_json)
+File.rename(
+dest+".tmp",
+dest)
+end
+
+# handle this like a fresh start with saved state
+# read crontab and saved state file,
+# and apply saved state to all existing tasks
+def load
+ct=Crontab.new
+ct.verify
+Dir.cd ct.global.workdir
+Dir.mkdir_p "cron_logs"
+@schedule.clear
+add_tasks ct.tasks
+if ! @immediate
+load_task_state?
+end
+end
+
+def loop(run_state_channel : Channel(RunState)? = nil)
+reasons=[] of Tuple(TaskState,Tuple(WaitReason, String, Time::Span))
 chan=Channel(Time).new
-events=Channel(Tuple(ScheduleItem, Int32, Int32, Time)).new
+events=Channel(Tuple(TaskState, Int32, Int32, Time)).new
+drain_state=DrainState::None
+run_state=RunState::Normal
+shortest_timeout=1.hour
+do_filter=@filter.size>0
+load
 while 1
+if drain_state.draining? && @schedule.none? {|i| i.running? }
+drain_state=DrainState::Drained
+end
+if drain_state.drained?
+if run_state.exit? || run_state.reload?
+if ! @immediate
+save_state
+end # if not immediate
+end # if exit or reload
+if run_state.reload?
+load
+run_state=RunState::Normal
+next
+end # if reloading
+if run_state.exit?
+exit
+end
+end
+if run_state.normal? && drain_state.none?
 reasons.clear
 @schedule.each do |i|
+if do_filter && ! @filter.includes?(i.task.name)
+next
+end
 reason=i.should_run?
 if reason[0].none?
 spawn do
@@ -542,11 +653,13 @@ reasons.each do |r|
 puts "#{r[0].task.name} #{r[1][0].to_s} #{r[1][1]} #{r[1][2].total_seconds}"
 end
 puts "-----"
+end # if ! reloading
 # wait on events from any task
 #puts timeout_reasons
 select
-#when reload.receive
-#reloading=1
+when run_state=run_state_channel.receive
+puts "run state #{run_state}"
+drain_state=DrainState::Draining
 #wait for all running tasks to stop
 #do not queue any further tasks
 #read crontab
@@ -572,22 +685,24 @@ end
 end #class
 
 
-class Crdo
-@schedule : Schedule
-getter schedule
-
-def initialize
-ct=Crontab.new
-ct.verify
-Dir.cd ct.global.workdir
-Dir.mkdir_p "cron_logs"
-@schedule=Schedule.new
-@schedule.test=ct.global.test
-@schedule.add_tasks ct.tasks
+run_state_chan=Channel(RunState).new
+Signal::HUP.trap do
+run_state_chan.send RunState::Reload
 end
-
+Signal::INT.trap do
+run_state_chan.send RunState::Exit
 end
-
-
-t=Crdo.new
-t.schedule.loop ARGV[0]?
+args=ARGV.dup
+test=false
+if pos=args.index("--test")
+args.delete_at(pos)
+test=true
+end
+immediate=false
+if pos=args.index("--now")
+args.delete_at(pos)
+immediate=true
+end
+t=Schedule.new test: test, immediate: immediate, filter: args.to_set
+puts "crdo running with pid #{Process.pid},#{immediate ? " immediate" : ""} #{test ? "test" : "normal"} mode"
+t.loop run_state_chan
