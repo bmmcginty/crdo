@@ -4,6 +4,7 @@ global:
   workdir: ~/run
 job1:
   every: 1m
+  error_body: "Run `~/fix-job1 && crdo --now job1` to fix this error and rerun the job."
   commands:
     - echo 1 > job1.1.done
     - echo 2 > job1.2.done

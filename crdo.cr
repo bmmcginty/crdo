@@ -175,6 +175,7 @@ end
 class Task
 @commands=[] of String
 @vars=Hash(String,String).new
+@error_body : String? = nil
 @name : String
 @when : TimeMatcher? = nil
 @every : Time::Span? = nil
@@ -182,7 +183,7 @@ class Task
 @parent : String? = nil
 @global : GlobalConfig
 @disabled=false
-getter name, every, group, parent, commands, global, disabled
+getter name, every, group, parent, commands, global, disabled, error_body
 
 def when
 @when
@@ -195,6 +196,8 @@ when "every"
 @every=parse_time_span v.as_s
 when "when"
 @when = parse_when(v.as_s)
+when "error_body"
+@error_body=v.as_s
 when "group"
 @group=v.as_s
 when "parent"
@@ -405,6 +408,10 @@ args+=["--attach",f]
 end # each file
 args << @task.global.mail.not_nil!
 body=IO::Memory.new
+if @task.error_body
+body << @task.error_body
+body << "\n"
+end
 body << "See attached files."
 body.seek 0
 Process.run(
