@@ -4,6 +4,7 @@ require "yaml"
 enum RunState
 Normal
 Reload
+Save
 Exit
 end
 
@@ -615,6 +616,13 @@ load_task_state?
 end
 end
 
+def autosave(run_state_chan, wait_time=600.seconds)
+while 1
+sleep wait_time
+run_state_chan.send RunState::Save
+end
+end
+
 def loop(run_state_channel : Channel(RunState)? = nil)
 reasons=[] of Tuple(TaskState,Tuple(WaitReason, String, Time::Span))
 chan=Channel(Time).new
@@ -629,20 +637,23 @@ if drain_state.draining? && @schedule.none? {|i| i.running? }
 drain_state=DrainState::Drained
 end
 if drain_state.drained?
-if run_state.exit? || run_state.reload?
+if run_state.exit? || run_state.reload? || run_state.save?
 if ! @immediate
 save_state
 end # if not immediate
-end # if exit or reload
+end # if exit or reload or save
 if run_state.reload?
 load
+end # if reload
+if run_state.reload? || run_state.save?
 run_state=RunState::Normal
+drain_state=DrainState::None
 next
-end # if reloading
+end # if reloading or saving
 if run_state.exit?
 exit
 end
-end
+end # if drained
 if run_state.normal? && drain_state.none?
 reasons.clear
 @schedule.each do |i|
@@ -654,6 +665,7 @@ if reason[0].none?
 spawn do
 i.run chan, events
 end
+sleep 0
 started i, chan
 else
 reasons << {i,reason}
@@ -669,7 +681,7 @@ reasons.each do |r|
 puts "#{r[0].task.name} #{r[1][0].to_s} #{r[1][1]} #{r[1][2].total_seconds}"
 end
 puts "-----"
-end # if ! reloading
+end # if normal and not draining
 # wait on events from any task
 #puts timeout_reasons
 select
@@ -721,4 +733,8 @@ immediate=true
 end
 t=Schedule.new test: test, immediate: immediate, filter: args.to_set
 puts "crdo running with pid #{Process.pid},#{immediate ? " immediate" : ""} #{test ? "test" : "normal"} mode"
+spawn do
+t.autosave run_state_chan
+end
+sleep 0
 t.loop run_state_chan
