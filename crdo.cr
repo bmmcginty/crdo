@@ -176,6 +176,7 @@ class Task
 @commands=[] of String
 @vars=Hash(String,String).new
 @error_body : String? = nil
+@error_command : String? = nil
 @name : String
 @when : TimeMatcher? = nil
 @every : Time::Span? = nil
@@ -183,7 +184,7 @@ class Task
 @parent : String? = nil
 @global : GlobalConfig
 @disabled=false
-getter name, every, group, parent, commands, global, disabled, error_body
+getter name, every, group, parent, commands, global, disabled, error_body, error_command
 
 def when
 @when
@@ -198,6 +199,8 @@ when "when"
 @when = parse_when(v.as_s)
 when "error_body"
 @error_body=v.as_s
+when "error_command"
+@error_command=v.as_s
 when "group"
 @group=v.as_s
 when "parent"
@@ -399,6 +402,12 @@ children.each do |c|
 c.parent_status[@task.name]=true
 end # each
 else # non-zero exit status
+if @task.error_command
+spawn do
+`#{@task.error_command}`
+end
+sleep 0
+end
 if @task.global.mail
 args=[] of String
 args+=["-s", "task #{@task.name} exitted #{@last_status}"]
