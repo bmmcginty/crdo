@@ -141,17 +141,17 @@ class GlobalConfig
 @error=false
 @test = false
 @mail : String? = nil
+@autosave : Time::Span = 600.seconds
 @workdir : String? = nil
 
 getter test, error, mail
-
-def workdir
-@workdir.not_nil!
-end
+getter! workdir, autosave
 
 def initialize(data : YAML::Any)
 data.as_h.each do |k,v|
 case k.as_s
+when "autosave"
+@autosave=v.as_i.seconds
 when "mail"
 @mail=v.as_s
 when "workdir"
@@ -262,7 +262,7 @@ class Crontab
 @global : GlobalConfig
 getter tasks, global
 
-def initialize(path="~/.crdo.yml")
+def initialize(path)
 t=YAML.parse File.read(Path[path].expand(home: true))
 @global=GlobalConfig.new t["global"]
 keys=t.as_h.keys.reject {|i| i=="global" }
@@ -320,6 +320,7 @@ class TaskState
 @errors = [] of Exception
 @schedule : Schedule
 @task : Task
+@current_start : Time? = nil
 @last_start : Time? = nil
 @last_stop : Time? = nil
 @last_status = -1
@@ -339,7 +340,6 @@ end
 def to_json(json : JSON::Builder)
 json.object do
 json.field "name", @task.name
-json.field "parent_status", @parent_status
 json.field "last_status", @last_status
 json.field "last_stop", (@last_stop ? @last_stop.not_nil!.to_utc.to_unix : nil)
 json.field "last_start", (@last_start ? @last_start.not_nil!.to_utc.to_unix : nil)
@@ -347,10 +347,6 @@ end
 end
 
 def set_state(data : JSON::Any)
-parent_status_h = Hash(String,Bool).new
-data["parent_status"].as_h.each do |k,v|
-parent_status_h[k]=v.as_bool
-end # each k,v
 @last_start = if t=data["last_start"].as_i64?
 Time.unix(t).to_local
 else
@@ -366,7 +362,7 @@ t
 else
 nil
 end
-@parent_status = parent_status_h
+@parent_status.clear
 end
 
 def task
@@ -379,15 +375,20 @@ end
 
 def started(start_time : Time)
 @running=true
-@last_start=start_time
+@current_start=start_time
 puts "running #{@task.name}"
+end
+
+def success?
+@last_status==0
 end
 
 def stopped(status : Int32, last_command_index : Int32, stop_time : Time)
 @running=false
+@last_start=@current_start
 @last_status=status
 @last_stop=stop_time
-success=@last_status == 0
+success = success?
 if @task.global.test && @task.global.error
 success=false
 end
@@ -536,11 +537,13 @@ class Schedule
 @test : Bool
 @immediate : Bool
 @filter : Set(String)
+@crontab : String
+@autosave : Time::Span = 0.seconds
 property :test
 
 delegate :select, to: @schedule
 
-def initialize(@test, @immediate, @filter)
+def initialize(@test, @immediate, @filter, @crontab)
 end
 
 def [](name : String)
@@ -555,13 +558,6 @@ def running
 @schedule.select &.running?
 end
 
-def add_tasks(tasks)
-tasks.each do |t|
-@schedule << TaskState.new(task: t, schedule: self)
-end
-clear_dependency_state
-end #def
-
 def clear_dependency_state
 @schedule.each do |parent|
 children=@schedule.select {|i| i.task.parent==parent.task.name }
@@ -572,7 +568,17 @@ end #each child
 end #each parent
 end # def
 
-def load_task_state?(path="~/.crdo.state")
+# you _must call clear_dependency_state
+def add_tasks(tasks)
+tasks.each do |t|
+@schedule << TaskState.new(task: t, schedule: self)
+end
+end #def
+
+# you _must call clear_dependency_state
+# after loading state
+def load_task_state?
+path=@crontab+".state"
 err=false
 src=Path[path].expand(home: true)
 if ! File.exists?(src)
@@ -591,7 +597,8 @@ end # each
 err==false
 end # def
 
-def save_state(path="~/.crdo.state")
+def save_state
+path=@crontab+".state"
 dest=Path[path].expand(home: true).to_s
 File.write(
 dest+".tmp",
@@ -605,15 +612,17 @@ end
 # read crontab and saved state file,
 # and apply saved state to all existing tasks
 def load
-ct=Crontab.new
+ct=Crontab.new @crontab
 ct.verify
 Dir.cd ct.global.workdir
+@autosave=ct.global.autosave
 Dir.mkdir_p "cron_logs"
 @schedule.clear
 add_tasks ct.tasks
 if ! @immediate
 load_task_state?
 end
+clear_dependency_state
 end
 
 def autosave(run_state_chan, wait_time=600.seconds)
@@ -632,20 +641,28 @@ run_state=RunState::Normal
 shortest_timeout=1.hour
 do_filter=@filter.size>0
 load
+if @autosave>0.seconds
+spawn do
+autosave run_state_channel, @autosave
+end
+sleep 0
+end
 while 1
+#puts "while, drain #{drain_state}, run #{run_state}, running #{running.size}"
 if drain_state.draining? && @schedule.none? {|i| i.running? }
 drain_state=DrainState::Drained
 end
 if drain_state.drained?
-if run_state.exit? || run_state.reload? || run_state.save?
+if run_state.exit? || run_state.reload?
 if ! @immediate
 save_state
 end # if not immediate
-end # if exit or reload or save
+end # if exit or reload
 if run_state.reload?
+#read crontab
+#update changed tasks
+#add new tasks
 load
-end # if reload
-if run_state.reload? || run_state.save?
 run_state=RunState::Normal
 drain_state=DrainState::None
 next
@@ -685,14 +702,24 @@ end # if normal and not draining
 # wait on events from any task
 #puts timeout_reasons
 select
-when run_state=run_state_channel.receive
-puts "run state #{run_state}"
-drain_state=DrainState::Draining
+when t=run_state_channel.receive
+if ! run_state.normal?
+puts "requested run state #{t} but currently have run state #{run_state} drain state #{drain_state}"
+next
+end
+if t.save?
+# ignore draining here
+# we want to save state in case of power outage, crash, etc
+# we can afford to rerun currently running tasks
+save_state
+next
+end
 #wait for all running tasks to stop
 #do not queue any further tasks
-#read crontab
-#update changed tasks
-#add new tasks
+run_state=t
+drain_state=DrainState::Draining
+puts "run state #{run_state}"
+next
 when x=events.receive
 stopped(x)
 next
@@ -721,6 +748,12 @@ Signal::INT.trap do
 run_state_chan.send RunState::Exit
 end
 args=ARGV.dup
+ct="~/.crdo.yml"
+if pos=args.index("--file")
+args.delete_at(pos)
+ct=args[pos]
+args.delete_at(pos)
+end
 test=false
 if pos=args.index("--test")
 args.delete_at(pos)
@@ -731,10 +764,6 @@ if pos=args.index("--now")
 args.delete_at(pos)
 immediate=true
 end
-t=Schedule.new test: test, immediate: immediate, filter: args.to_set
+t=Schedule.new test: test, immediate: immediate, filter: args.to_set, crontab: ct
 puts "crdo running with pid #{Process.pid},#{immediate ? " immediate" : ""} #{test ? "test" : "normal"} mode"
-spawn do
-t.autosave run_state_chan
-end
-sleep 0
 t.loop run_state_chan

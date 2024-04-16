@@ -12,8 +12,17 @@ crystal build crdo.cr
 ./crdo
 ```
 
+## Notes
+
+I have explicitly chosen not to track the state of dependent tasks across restarts.
+After a restart, all parent tasks must run once before their child tasks are eligible to run again.
+If this tool handled reloading of dependent statuses,
+the load/save functionality would immediately gain complexity,
+and saved state would cause a causal link between (possibly) changed dependent values in the scheduling file.
+
 ## Todo
 
+* on hup or ^c, allow killing running tasks after a configurable timeout
 * Ensure that a task does not run more than once in an assigned time period (other than retry-after-error)
 * specs
 * time zones (Time.local+x.days and Time.local.shift(days: x) give different results, the ladder of these ending up in a never-ending loop)
