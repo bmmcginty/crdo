@@ -1,23 +1,81 @@
+# copy to ~/.crdo.yml, or run `crdo --file ./sample.crdo.yml` in this directory
 global:
-  email: user@domain.tld
+  # string
+  # if set, errors and task logs will be sent to this address
+  mail: user@domain.tld
+  # boolean
+  # if set to true, tasks will be prepended with the echo command.
+  # This allows the operator to verify teh commands that will be run, including variable substitution.
   test: false
+  # path
+  # This directory is the base to any relative paths in commands in this file.
+  # This directory will also hold cron_logs.
   workdir: ~/run
+  workdir: .
+# string
+# a name for labeling this task.
 job1:
+  # interval
+  # This task will run no less than `every` interval,
+  # measured between one start time and the next.
+  # interval can be [s]econds|[m]inutes|[h]ours|[d]ays
   every: 1m
+  # string
+  # body of an email to send when an error occurs
+  # Allows for listing possible error causes and fixes.
   error_body: "Run `~/fix-job1 && crdo --now job1` to fix this error and rerun the job."
+  # array
+  # Each task must have a commands array.
   commands:
-    - echo 1 > job1.1.done
-    - echo 2 > job1.2.done
+    # command
+    # a command to run
+    # Command paths must be relative to workdir, or be absolute paths.
+    # Paths are checked each time this file is loaded.
+    - /usr/bin/echo job 1.1 done
+    - /usr/bin/echo job 1.2 done
 job2:
   every: 2m
+  # task name
+  # This task will only run after job1 completes successfully.
+  # After this job runs once, job1 will have to successfully rerun to allow this job to run again.
   parent: job1
   commands:
-    - echo job2
+    - /usr/bin/echo job 2 done
 job3:
+  # Allows for easily disabling a job.
+  # Good when changes are being made to an underlying script.
   disabled: true
+  # hash of string=>string
+  # If present, holds variables usable in commands for this task.
   vars:
-    name: job3
+    name: job 3
   every: 2m
   parent: job1
   commands:
-    - echo $name
+    # will use the command `echo job 3 done`
+    - /usr/bin/echo $name done
+job4:
+  # string
+  # with group specified,
+  # job4 and job5 will not run at the same time.
+  every: 5s
+  group: concurrent-lock
+  commands:
+    - /usr/bin/sleep 2
+    - /usr/bin/echo job 4 done
+job5:
+  group: concurrent-lock
+  every: 5s
+  commands:
+    - /usr/bin/sleep 2
+    - /usr/bin/echo job 5 done
+job6e:
+  # string
+  # If present, this command will be run after a command has returned non-zero.
+  # The below command will launch a new tmux window,
+  # if one does not already exist,
+  # to e.g. allow handling said error.
+  error_command: "tmux new-window -d -S -P -n 'main:job6e-window' 'echo interactive job6e error window'"
+  commands:
+    - /bin/false
+
