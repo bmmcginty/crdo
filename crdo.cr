@@ -143,13 +143,16 @@ class GlobalConfig
 @mail : String? = nil
 @autosave : Time::Span = 600.seconds
 @workdir : String? = nil
+@include_paths = [] of String
 
-getter test, error, mail
+getter test, error, mail, include_paths
 getter! workdir, autosave
 
 def initialize(data : YAML::Any)
 data.as_h.each do |k,v|
 case k.as_s
+when "include"
+@include_paths.concat(v.as_a.map &.as_s)
 when "autosave"
 @autosave=v.as_i.seconds
 when "mail"
@@ -263,8 +266,21 @@ class Crontab
 getter tasks, global
 
 def initialize(path)
-t=YAML.parse File.read(Path[path].expand(home: true))
+crdo_path=Path[path].expand(home: true)
+t=YAML.parse File.read(crdo_path)
 @global=GlobalConfig.new t["global"]
+@global.include_paths.each do |include_path|
+include_tasks=YAML.parse File.read(Path[include_path].expand(base: File.dirname(crdo_path), home: true))
+if include_tasks["global"]?
+raise Exception.new("include file #{include_path} has invalid `global` key")
+end
+include_tasks.as_h.each do |k,v|
+if t[k]?
+raise Exception.new("#{include_path}:#{k} conflicts with already existing task with same name")
+end
+t.as_h[k]=v
+end
+end
 keys=t.as_h.keys.reject {|i| i=="global" }
 @tasks=keys.map {|key| Task.new(name: key.as_s, data: t[key], global: @global) }
 end

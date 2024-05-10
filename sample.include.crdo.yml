@@ -1,0 +1,10 @@
+job6e:
+  # string
+  # If present, this command will be run after a command has returned non-zero.
+  # The below command will launch a new tmux window,
+  # if one does not already exist,
+  # to e.g. allow handling said error.
+  error_command: "tmux new-window -d -S -P -n 'main:job6e-window' 'echo interactive job6e error window'"
+  commands:
+    - /bin/false
+
