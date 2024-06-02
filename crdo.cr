@@ -399,6 +399,10 @@ def success?
 @last_status==0
 end
 
+def log_dn(ts)
+ts.to_s("cron_logs/#{@task.name}/%Y-%m-%d/%H-%M-%S")
+end
+
 def stopped(status : Int32, last_command_index : Int32, stop_time : Time)
 @running=false
 @last_start=@current_start
@@ -429,7 +433,8 @@ end
 if @task.global.mail
 args=[] of String
 args+=["-s", "task #{@task.name} exitted #{@last_status}"]
-fl=Dir.glob("cron_logs/#{@task.name}.*")
+dn=log_dn(@last_start.as(Time))
+fl=Dir.glob("#{dn}/*")
 fl.each do |f|
 args+=["--attach",f]
 end # each file
@@ -454,22 +459,15 @@ end #def
 # so it keeps a consistent view of tasks and their statuses.
 def run(start_channel, events_channel)
 @errors.clear
-fl=Dir.glob("cron_logs/#{@task.name}.*")
-fl.each do |fn|
-begin
-File.delete(fn)
-rescue e
-puts "error deleting #{fn}"
-end
-end # each log
-start_channel.send(Time.local)
+ts=Time.local
+start_channel.send(ts)
 last_command=-1
 rc=0
 @task.commands.each_with_index do |c,idx|
 last_command+=1
 t=@task.hydrate_command(c)
 begin
-rc=run args: t, idx: idx
+rc=run args: t, idx: idx, start_time: ts
 rescue exc
 rc=999
 @errors << exc
@@ -479,22 +477,22 @@ end #each
 events_channel.send({self, rc, last_command, Time.local})
 end #def
 
-def run(args : Array(String), idx : Int32)
+def run(args : Array(String), idx : Int32, start_time : Time)
 if @schedule.test
 args=args.clone
 args.unshift "echo"
 end
-File.write("cron_logs/#{@task.name}.#{idx}.cmdline", args.to_json)
-error_fh=File.open("cron_logs/#{@task.name}.#{idx}.stderr", "wb")
-output_fh=File.open("cron_logs/#{@task.name}.#{idx}.stdout", "wb")
+dn=log_dn(start_time)
+Dir.mkdir_p dn
+File.write("#{dn}/#{idx}.cmdline", args.to_json)
+error_fh=File.open("#{dn}/#{idx}.stderr", "wb")
+output_fh=File.open("#{dn}/#{idx}.stdout", "wb")
 begin
 @sp = Process.new(
 command: args[0],
 args: args[1..-1],
 error: error_fh,
-#Process::Redirect::Inherit,
 output: output_fh,
-#Process::Redirect::Inherit,
 chdir: @task.global.workdir
 )
 ret=@sp.not_nil!.wait.exit_status
@@ -632,7 +630,6 @@ ct=Crontab.new @crontab
 ct.verify
 Dir.cd ct.global.workdir
 @autosave=ct.global.autosave
-Dir.mkdir_p "cron_logs"
 @schedule.clear
 add_tasks ct.tasks
 if ! @immediate
@@ -699,7 +696,7 @@ spawn do
 i.run chan, events
 end
 sleep 0
-started i, chan
+started i, chan.receive
 else
 reasons << {i,reason}
 end #if
@@ -745,8 +742,8 @@ end #select
 end #while
 end #def
 
-def started(task, chan)
-task.started chan.receive
+def started(task, start_time)
+task.started start_time
 end
 
 def stopped(x)
