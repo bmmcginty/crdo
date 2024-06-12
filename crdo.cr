@@ -245,7 +245,13 @@ end
 
 def verify
 verify_commands
-end
+if @error_command
+t=hydrate_command(@error_command.not_nil!)
+if ! File.executable?(t[0])
+raise Exception.new("task #{@name}, error command, no path #{t[0]}")
+end # executable
+end # if error command
+end # def
 
 def verify_commands
 @commands.each_with_index do |i, idx|
@@ -426,7 +432,8 @@ end # each
 else # non-zero exit status
 if @task.error_command
 spawn do
-`#{@task.error_command}`
+ec=@task.hydrate_command(@task.error_command.not_nil!)
+`#{Process.quote(ec)}`
 end
 sleep 0
 end
