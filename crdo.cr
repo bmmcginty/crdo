@@ -1,4 +1,5 @@
 require "json"
+require "option_parser"
 require "yaml"
 
 enum RunState
@@ -760,6 +761,40 @@ end
 end #class
 
 
+def main
+test=false
+immediate=false
+ct="~/.crdo.yml"
+filter=Array(String).new.to_set
+parser=OptionParser.new do |parser|
+parser.on(
+"-h",
+"--help",
+"show this help") do
+puts parser
+exit
+end
+parser.on(
+"--file name",
+"location of crdo file"
+) do |name|
+ct=name
+end
+parser.on(
+"--now",
+"run a single task without reading or writing task state"
+) do
+immediate=true
+end
+parser.on("--test",
+"prefix all commands with echo") do
+test=true
+end
+parser.unknown_args do |args|
+filter=args.to_set
+end
+end
+parser.parse
 run_state_chan=Channel(RunState).new
 Signal::HUP.trap do
 run_state_chan.send RunState::Reload
@@ -767,23 +802,9 @@ end
 Signal::INT.trap do
 run_state_chan.send RunState::Exit
 end
-args=ARGV.dup
-ct="~/.crdo.yml"
-if pos=args.index("--file")
-args.delete_at(pos)
-ct=args[pos]
-args.delete_at(pos)
-end
-test=false
-if pos=args.index("--test")
-args.delete_at(pos)
-test=true
-end
-immediate=false
-if pos=args.index("--now")
-args.delete_at(pos)
-immediate=true
-end
-t=Schedule.new test: test, immediate: immediate, filter: args.to_set, crontab: ct
+t=Schedule.new test: test, immediate: immediate, filter: filter, crontab: ct
 puts "crdo running with pid #{Process.pid},#{immediate ? " immediate" : ""} #{test ? "test" : "normal"} mode"
 t.loop run_state_chan
+end
+
+main
