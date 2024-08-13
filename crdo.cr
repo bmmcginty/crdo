@@ -364,19 +364,23 @@ def to_json(json : JSON::Builder)
 json.object do
 json.field "name", @task.name
 json.field "last_status", @last_status
-json.field "last_stop", (@last_stop ? @last_stop.not_nil!.to_utc.to_unix : nil)
-json.field "last_start", (@last_start ? @last_start.not_nil!.to_utc.to_unix : nil)
+json.field "last_stop_ms", (@last_stop ? @last_stop.not_nil!.to_utc.to_unix_ms : nil)
+json.field "last_start_ms", (@last_start ? @last_start.not_nil!.to_utc.to_unix_ms : nil)
 end
 end
 
 def set_state(data : JSON::Any)
 @last_start = if t=data["last_start"].as_i64?
 Time.unix(t).to_local
+elsif t=data["last_start_ms"].as_i64?
+Time.unix_ms(t).to_local
 else
 nil
 end
 @last_stop = if t=data["last_stop"].as_i64?
 Time.unix(t).to_local
+elsif t=data["last_stop_ms"].as_i64?
+Time.unix_ms(t).to_local
 else
 nil
 end
