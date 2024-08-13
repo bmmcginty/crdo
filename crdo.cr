@@ -392,6 +392,10 @@ end
 @parent_status.clear
 end
 
+def has_run_successfully_since?(ts : Time)
+(! running?) && success? && @last_start && @last_stop && @last_stop.not_nil!>=@last_start.not_nil! && @last_start.not_nil!>=ts
+end
+
 def task
 @task
 end
@@ -584,6 +588,20 @@ def running
 @schedule.select &.running?
 end
 
+def all_tasks_have_run_since?(start_time)
+do_filter=@filter.size>0
+ret=true
+@schedule.each do |i|
+if do_filter && ! @filter.includes?(i.task.name)
+next
+end # if filter
+if ! i.has_run_successfully_since?(start_time)
+ret=false
+end # if task has not run
+end # each task
+ret
+end # def
+
 def clear_dependency_state
 @schedule.each do |parent|
 children=@schedule.select {|i| i.task.parent==parent.task.name }
@@ -658,6 +676,7 @@ end
 end
 
 def loop(run_state_channel : Channel(RunState)? = nil)
+loop_start_time=Time.local
 reasons=[] of Tuple(TaskState,Tuple(WaitReason, String, Time::Span))
 chan=Channel(Time).new
 events=Channel(Tuple(TaskState, Int32, Int32, Time)).new
@@ -747,6 +766,9 @@ puts "run state #{run_state}"
 next
 when x=events.receive
 stopped(x)
+if @immediate && all_tasks_have_run_since?(loop_start_time)
+break
+end # if immediate mode
 next
 when timeout(shortest_timeout)
 next
