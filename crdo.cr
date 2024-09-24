@@ -191,6 +191,8 @@ class Task
 @disabled=false
 getter name, every, group, parent, commands, global, disabled, error_body, error_command
 
+# we need this as a def
+# because `when` in a getter macro raises a syntax error
 def when
 @when
 end
