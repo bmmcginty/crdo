@@ -449,29 +449,48 @@ end
 sleep 0
 end
 if @task.global.mail
-args=[] of String
-args+=["-s", "task #{@task.name} exitted #{@last_status}"]
+subject="task #{@task.name} exitted #{@last_status}"
 dn=log_dn(@last_start.as(Time))
 fl=Dir.glob("#{dn}/*")
-fl.each do |f|
-args+=["--attach",f]
-end # each file
-args << @task.global.mail.not_nil!
 body=IO::Memory.new
 if @task.error_body
 body << @task.error_body
 body << "\n"
 end
 body << "See attached files."
+send_mail(
+to: @task.global.mail.not_nil!,
+subject: subject,
+attach: fl,
+body: body)
+end #if mail
+end # if/else success
+end #def
+
+def send_mail(to, subject, body : IO|String|Nil, attach : Array(String)?)
+body = case body
+when String
+IO::Memory.new body
+when Nil
+IO::Memory.new
+else
+body
+end
+args=[] of String
+args+=["-s", subject]
+if attach
+attach.each do |f|
+args+=["--attach",f]
+end # each file
+end # if attach
+args << to
 body.seek 0
 Process.run(
 command: "/usr/bin/mail",
 args: args,
 input: body
 )
-end #if mail
-end # if/else success
-end #def
+end # def
 
 # the scheduler calls started and stopped
 # so it keeps a consistent view of tasks and their statuses.
