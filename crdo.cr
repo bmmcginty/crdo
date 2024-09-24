@@ -394,8 +394,8 @@ end
 @parent_status.clear
 end
 
-def has_run_successfully_since?(ts : Time)
-(! running?) && success? && @last_start && @last_stop && @last_stop.not_nil!>=@last_start.not_nil! && @last_start.not_nil!>=ts
+def has_run_successfully_once_since?(ts : Time)
+success? && @last_start && @last_stop && @last_stop.not_nil!>=@last_start.not_nil! && @last_start.not_nil!>=ts
 end
 
 def task
@@ -590,14 +590,14 @@ def running
 @schedule.select &.running?
 end
 
-def all_tasks_have_run_since?(start_time)
+def all_tasks_have_run_once_since?(start_time)
 do_filter=@filter.size>0
 ret=true
 @schedule.each do |i|
 if do_filter && ! @filter.includes?(i.task.name)
 next
 end # if filter
-if ! i.has_run_successfully_since?(start_time)
+if ! i.has_run_successfully_once_since?(start_time)
 ret=false
 end # if task has not run
 end # each task
@@ -768,7 +768,7 @@ puts "run state #{run_state}"
 next
 when x=events.receive
 stopped(x)
-if @immediate && all_tasks_have_run_since?(loop_start_time)
+if @immediate && all_tasks_have_run_once_since?(loop_start_time)
 break
 end # if immediate mode
 next
