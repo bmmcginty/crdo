@@ -8,6 +8,9 @@ global:
   # if set, errors and task logs will be sent to this address
   mail: user@domain.tld
   # boolean
+  # if set, do not send errors for tasks that run long enough to interfear with their next schedule run
+  ignore_overtime: false
+  # boolean
   # if set to true, tasks will be prepended with the echo command.
   # This allows the operator to verify teh commands that will be run, including variable substitution.
   test: false

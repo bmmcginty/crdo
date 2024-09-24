@@ -141,12 +141,13 @@ end
 class GlobalConfig
 @error=false
 @test = false
+@ignore_overtime = false
 @mail : String? = nil
 @autosave : Time::Span = 600.seconds
 @workdir : String? = nil
 @include_paths = [] of String
 
-getter test, error, mail, include_paths
+getter test, error, mail, ignore_overtime, include_paths
 getter! workdir, autosave
 
 def initialize(data : YAML::Any)
@@ -156,6 +157,8 @@ when "include"
 @include_paths.concat(v.as_a.map &.as_s)
 when "autosave"
 @autosave=v.as_i.seconds
+when "ignore_overtime"
+@ignore_overtime=v.as_bool
 when "mail"
 @mail=v.as_s
 when "workdir"
@@ -350,6 +353,7 @@ class TaskState
 @last_stop : Time? = nil
 @last_status = -1
 @running = false
+@overtime_occured=false
 # each child keeps a log of parent_name->has_successfully run status.
 # each parent sets this flag to true for each of it's children upon a successful run.
 # each child clears that flag for each of it's parents, after it itself runs.
@@ -358,6 +362,37 @@ class TaskState
 @parent_status=Hash(String,Bool).new
 @sp : Process? = nil
 getter parent_status
+
+def should_notify_overtime?
+# only notify if we're running
+if ! @running
+return false
+end
+# only notify for overtime once per run
+if @overtime_occured
+return false
+end
+if @task.global.ignore_overtime
+return false
+end
+# a task should run in less time than it's every setting,
+# because we don't generally want duplicate tasks running at the same time.
+# If we run so long that we're interfearing with our next scheduled run,
+# then we should send an error.
+if @task.every && (Time.local-@current_start.not_nil!) > @task.every.not_nil!
+return true
+end
+false
+end
+
+def notify_overtime
+@overtime_occured=true
+send_mail(
+to: @task.global.mail.not_nil!,
+subject: "Task #{@task.name} now in overtime",
+body: nil,
+attach: nil)
+end
 
 def initialize(@task, @schedule)
 end
@@ -392,6 +427,7 @@ else
 nil
 end
 @parent_status.clear
+@overtime_occured=false
 end
 
 def has_run_successfully_once_since?(ts : Time)
@@ -407,6 +443,7 @@ def running?
 end
 
 def started(start_time : Time)
+@overtime_occured=false
 @running=true
 @current_start=start_time
 puts "running #{@task.name}"
@@ -750,6 +787,9 @@ end
 sleep 0
 started i, chan.receive
 else
+if i.should_notify_overtime?
+notify_overtime i
+end
 reasons << {i,reason}
 end #if
 end #each
@@ -796,6 +836,10 @@ next
 end #select
 end #while
 end #def
+
+def notify_overtime(task)
+task.notify_overtime
+end
 
 def started(task, start_time)
 task.started start_time
