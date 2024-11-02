@@ -2,6 +2,12 @@ require "json"
 require "option_parser"
 require "yaml"
 
+alias TaskWaitState = NamedTuple(
+  task: Task,
+  reason: WaitReason,
+  text: String,
+  time: Time::Span)
+
 enum RunState
   Normal
   Reload
@@ -602,46 +608,46 @@ class TaskState
     ret.not_nil!
   end
 
-  def should_run?
+  def should_run? : TaskWaitState
     # don't run a disabled task
     if @task.disabled
-      return {WaitReason::Disabled, @task.name, 0.seconds}
+      return TaskWaitState.new(task: @task, reason: WaitReason::Disabled, text: @task.name, time: 0.seconds)
     end
     # don't run the same task in parallel
     if @running
-      return {WaitReason::Running, @task.name, 0.seconds}
+      return TaskWaitState.new(task: @task, reason: WaitReason::Running, text: @task.name, time: 0.seconds)
     end
     rr = @schedule.running.map &.task.name
     # don't run a task in parallel with any other task in the same serial group
     if @task.group && @schedule.running.any? { |i| i.task.group == @task.group }
-      return {WaitReason::Serial, @task.group.not_nil!, 0.seconds}
+      return TaskWaitState.new(task: @task, reason: WaitReason::Serial, text: @task.group.not_nil!, time: 0.seconds)
     end
     # don't run a task if it has a prerequisit task and that task has not been completed
     if @task.parent && @parent_status[@task.parent.not_nil!] == false
-      return {WaitReason::Depend, @task.parent.not_nil!, 0.seconds}
+      return TaskWaitState.new(task: @task, reason: WaitReason::Depend, text: @task.parent.not_nil!, time: 0.seconds)
     end
     if @task.when
       if !@task.when.not_nil!.match(Time.local)
-        return {WaitReason::Wait, "", @task.when.not_nil!.find_next(Time.local) - Time.local}
+        return TaskWaitState.new(task: @task, reason: WaitReason::Wait, text: "", time: @task.when.not_nil!.find_next(Time.local) - Time.local)
       end
       if @last_start && !@task.when.not_nil!.enough_after(@last_start.not_nil!, Time.local)
-        return {WaitReason::Wait, "", @task.when.not_nil!.find_next(Time.local) - Time.local}
+        return TaskWaitState.new(task: @task, reason: WaitReason::Wait, text: "", time: @task.when.not_nil!.find_next(Time.local) - Time.local)
       end
-      return {WaitReason::None, "", 0.seconds}
+      return TaskWaitState.new(task: @task, reason: WaitReason::None, text: "", time: 0.seconds)
     end
     # run every x sec|min|hour|day
     if @task.every
       # if task hasn't been run before, then run
       if !@last_start
-        return {WaitReason::None, "", 0.seconds}
+        return TaskWaitState.new(task: @task, reason: WaitReason::None, text: "", time: 0.seconds)
       end
       # if enough time has passed between the last time we started the process and the current time, run it
       elapsed = Time.local - @last_start.not_nil!
       if elapsed >= @task.every.not_nil!
-        return {WaitReason::None, "", 0.seconds}
+        return TaskWaitState.new(task: @task, reason: WaitReason::None, text: "", time: 0.seconds)
       end
       # need to wait
-      return {WaitReason::Wait, "", (@task.every.not_nil! - elapsed)}
+      return TaskWaitState.new(task: @task, reason: WaitReason::Wait, text: "", time: (@task.every.not_nil! - elapsed))
     end # if every
     raise Exception.new("task does not have every or when")
   end # def
@@ -763,7 +769,7 @@ class Schedule
 
   def loop(run_state_channel : Channel(RunState)? = nil)
     loop_start_time = Time.local
-    reasons = [] of Tuple(TaskState, Tuple(WaitReason, String, Time::Span))
+    reasons = [] of TaskWaitState
     chan = Channel(Time).new
     events = Channel(Tuple(TaskState, Int32, Int32, Time)).new
     drain_state = DrainState::None
@@ -808,7 +814,7 @@ class Schedule
             next
           end
           reason = i.should_run?
-          if reason[0].none?
+          if reason[:reason].none?
             spawn do
               i.run chan, events
             end
@@ -818,14 +824,14 @@ class Schedule
             if i.should_notify_overtime?
               notify_overtime i
             end
-            reasons << {i, reason}
+            reasons << reason
           end # if
         end   # each
-        timeout_reasons = reasons.select { |i| i[1][0].wait? }
-        timeouts = timeout_reasons.map { |i| i[1][2] }
+        timeout_reasons = reasons.select { |i| i[:reason].wait? }
+        timeouts = timeout_reasons.map { |i| i[:time] }
         shortest_timeout = timeouts.size > 0 ? timeouts.min : 1.hour
         reasons.sort_by! do |i|
-          i[1][2]
+          i[:time]
         end
         reasons.each do |r|
           puts "#{r[0].task.name} #{r[1][0].to_s} #{r[1][1]} #{r[1][2].total_seconds}"
