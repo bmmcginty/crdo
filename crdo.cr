@@ -115,6 +115,10 @@ enum WaitReason
   Disabled
 end
 
+def format_time_span(t)
+  "#{(t.days*24) + t.hours}:#{t.minutes}:#{t.seconds}"
+end
+
 def parse_when(txt)
   short_day_of_week_names = Time::DayOfWeek.names.map { |i| i.downcase[0..2] }
   short_month_names = %w(jan feb mar apr may jun jul aug sep oct nov dec)
@@ -834,7 +838,7 @@ class Schedule
           i[:time]
         end
         reasons.each do |r|
-          puts "#{r[0].task.name} #{r[1][0].to_s} #{r[1][1]} #{r[1][2].total_seconds}"
+          puts "#{r[:task].name}, #{r[:reason].to_s}: #{r[:text]} #{format_time_span(r[:time])}"
         end
         puts "-----"
       end # if normal and not draining
