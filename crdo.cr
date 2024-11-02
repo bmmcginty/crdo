@@ -284,7 +284,7 @@ def verify
 verify_commands
 if @error_command
 t=hydrate_command(@error_command.not_nil!)
-if ! File.executable?(t[0])
+if ! File::Info.executable?(t[0])
 raise Exception.new("task #{@name}, error command, no path #{t[0]}")
 end # executable
 end # if error command
@@ -293,7 +293,7 @@ end # def
 def verify_commands
 @commands.each_with_index do |i, idx|
 t=hydrate_command(i)
-if ! File.executable?(t[0])
+if ! File::Info.executable?(t[0])
 raise Exception.new("task #{@name}, command #{idx}, no path #{t[0]}")
 end
 end #each command
@@ -514,7 +514,7 @@ spawn do
 ec=@task.hydrate_command(@task.error_command.not_nil!)
 `#{Process.quote(ec)}`
 end
-sleep 0
+sleep 0.seconds
 end
 if @task.global.mail
 subject="task #{@task.name} exitted #{@last_status}"
@@ -784,7 +784,7 @@ if @autosave>0.seconds
 spawn do
 autosave run_state_channel, @autosave
 end
-sleep 0
+sleep 0.seconds
 end
 while 1
 #puts "while, drain #{drain_state}, run #{run_state}, running #{running.size}"
@@ -821,7 +821,7 @@ if reason[0].none?
 spawn do
 i.run chan, events
 end
-sleep 0
+sleep 0.seconds
 started i, chan.receive
 else
 if i.should_notify_overtime?
