@@ -76,3 +76,7 @@ job5:
   commands:
     - /usr/bin/sleep 2
     - /usr/bin/echo job 5 done
+job6:
+  when: 13:00
+  commands:
+    - /usr/bin/echo job6 done
