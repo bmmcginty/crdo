@@ -602,7 +602,7 @@ class TaskState
         output: output_fh,
         chdir: @task.global.workdir
       )
-      ret = @sp.not_nil!.wait.exit_status
+      ret = @sp.not_nil!.wait.exit_code
     rescue e
       error_fh << "\n#{e.inspect}"
     ensure
