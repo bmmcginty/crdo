@@ -17,14 +17,16 @@ global:
   # path
   # This directory is the base to any relative paths in commands in this file.
   # This directory will also hold cron_logs.
-  workdir: ~/run
+#  workdir: ~/run
   workdir: .
 # string
 # a name for labeling this task.
 job1:
   # interval
   # This task will run no less than `every` interval,
-  # measured between one start time and the next.
+  # measured between one start time and the next start time.
+  # see job 7 for using use_stop_time to use the tasks stop time
+  # instead of it's start time.
   # interval can be [s]econds|[m]inutes|[h]ours|[d]ays
   every: 1m
   # string
@@ -80,3 +82,10 @@ job6:
   when: 13:00
   commands:
     - /usr/bin/echo job6 done
+job7:
+  every: 10s
+  # task will sleep 10s before resuming
+  use_stop_time: true
+  commands:
+    - /usr/bin/sleep 2
+    - /usr/bin/echo job7 done

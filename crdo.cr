@@ -227,7 +227,8 @@ class Task
   @parent : String? = nil
   @global : GlobalConfig
   @disabled = false
-  getter name, every, group, parent, commands, global, disabled, error_body, error_command
+  @use_stop_time = false
+  getter name, every, group, parent, use_stop_time, commands, global, disabled, error_body, error_command
 
   # we need this as a def
   # because `when` in a getter macro raises a syntax error
@@ -240,6 +241,8 @@ class Task
       case k
       when "every"
         @every = parse_time_span v.as_s
+      when "use_stop_time"
+        @use_stop_time = v.as_bool
       when "when"
         @when = parse_when(v.as_s)
       when "error_body"
@@ -273,7 +276,10 @@ class Task
     if flag == 2
       raise Exception.new("task #{name} must have only one `every` or `when` key")
     end
-  end
+    if data["use_stop_time"]? && !@every
+      raise Exception.new("task #{name} can only use `use_stop_time` with `every`")
+    end # if
+  end   # def
 
   def hydrate_command(c)
     @vars.each do |k, v|
@@ -479,7 +485,6 @@ class TaskState
     @overtime_occured = false
     @running = true
     @current_start = start_time
-    puts "running #{@task.name}"
   end
 
   def success?
@@ -620,7 +625,7 @@ class TaskState
     end
     # don't run the same task in parallel
     if @running
-      return TaskWaitState.new(task: @task, reason: WaitReason::Running, text: @task.name, time: 0.seconds)
+      return TaskWaitState.new(task: @task, reason: WaitReason::None, text: @task.name, time: 0.seconds)
     end
     rr = @schedule.running.map &.task.name
     # don't run a task in parallel with any other task in the same serial group
@@ -647,7 +652,11 @@ class TaskState
         return TaskWaitState.new(task: @task, reason: WaitReason::None, text: "", time: 0.seconds)
       end
       # if enough time has passed between the last time we started the process and the current time, run it
-      elapsed = Time.local - @last_start.not_nil!
+      elapsed = if @task.use_stop_time
+                  Time.local - @last_stop.not_nil!
+                else
+                  Time.local - @last_start.not_nil!
+                end
       if elapsed >= @task.every.not_nil!
         return TaskWaitState.new(task: @task, reason: WaitReason::None, text: "", time: 0.seconds)
       end
@@ -828,17 +837,16 @@ class Schedule
             if i.should_notify_overtime?
               notify_overtime i
             end
-            reasons << reason
           end # if
-        end   # each
-        timeout_reasons = reasons.select { |i| i[:reason].wait? }
-        timeouts = timeout_reasons.map { |i| i[:time] }
+          reasons << reason
+        end # each
+        timeouts = reasons.select { |i| i[:reason].wait? }.map { |i| i[:time] }
         shortest_timeout = timeouts.size > 0 ? timeouts.min : 1.hour
         reasons.sort_by! do |i|
           i[:time]
         end
         reasons.each do |r|
-          puts "#{r[:task].name}, #{r[:reason].to_s}: #{r[:text]} #{format_time_span(r[:time])}"
+          puts "#{r[:task].name}, #{r[:reason].none? ? "running" : r[:reason].to_s}: #{r[:text]} #{format_time_span(r[:time])}"
         end
         puts "-----"
       end # if normal and not draining
