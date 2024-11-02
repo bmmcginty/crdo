@@ -487,7 +487,8 @@ class TaskState
   end
 
   def log_dn(ts)
-    ts.to_s("cron_logs/#{@task.name}/%Y-%m-%d/%H-%M-%S")
+    t = ts.to_s("%Y-%m-%d/%H-%M-%S")
+    "#{@task.global.workdir}/cron_logs/#{@task.name}/#{t}"
   end
 
   def stopped(status : Int32, last_command_index : Int32, stop_time : Time)
@@ -754,7 +755,6 @@ class Schedule
   def load
     ct = Crontab.new @crontab
     ct.verify
-    Dir.cd ct.global.workdir
     @autosave = ct.global.autosave
     @schedule.clear
     add_tasks ct.tasks
