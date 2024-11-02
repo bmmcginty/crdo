@@ -29,7 +29,12 @@ raise Exception.new("invalid TimeMatcher")
 end
 end
 
-def find_next(t)
+# has enough time elapsed since t1 for t2 to be a valid run time?
+def enough_after(t1, t2)
+(t2-get_interval)>t1
+end
+
+def get_interval
 interval = case 
 when @minute
 1.minutes
@@ -42,12 +47,38 @@ when @month
 else
 raise Exception.new("invalid time matcher")
 end
+end
+
+def truncate(t)
+case
+when @minute
+t.at_beginning_of_minute
+when @hour
+t.at_beginning_of_hour
+when @day
+t.at_beginning_of_day
+when @month
+t.at_beginning_of_month
+else
+t
+end
+end # def
+
+def find_next(t)
+interval=get_interval
 # add interval to t because we don't want to match on the current minute
 t+=interval
 while ! match(t)
 t+=interval
 end
-t
+# bring t to the beginning of the interval
+# e.g. 5:30, when searched for starting at 5:28:29 would go
+# - 5:28:29,
+# plus one minute not to match 5:28,
+# + 1 minute (during the above while loop),
+# which would get you to 5:30:29,
+# and then truncate would get you back to 5:30:00
+truncate(t)
 end
 
 def match(t : Time)
@@ -105,7 +136,7 @@ raise Exception.new("invalid when #{txt} token #{w} is duplicate instance of mon
 end
 month=short_month_names.index!(w)+1
 has_month=true
-elsif w.match(/[0-9]+:[0-9]+$/)
+elsif w.match(/^[0-9]+:[0-9]+$/)
 hour,minute=w.split(":").map &.to_i
 else
 raise Exception.new("invalid when #{txt} token #{w} is not month|weekday|hour:minute")
@@ -598,7 +629,13 @@ if @task.parent && @parent_status[@task.parent.not_nil!] == false
 return {WaitReason::Depend, @task.parent.not_nil!, 0.seconds}
 end
 if @task.when
+if ! @task.when.not_nil!.match(Time.local)
 return {WaitReason::Wait, "", @task.when.not_nil!.find_next(Time.local)-Time.local}
+end
+if @last_start && ! @task.when.not_nil!.enough_after(@last_start.not_nil!, Time.local)
+return {WaitReason::Wait, "", @task.when.not_nil!.find_next(Time.local)-Time.local}
+end
+return {WaitReason::None, "", 0.seconds}
 end
 # run every x sec|min|hour|day
 if @task.every
