@@ -13,6 +13,8 @@ enum RunState
   Reload
   Save
   Exit
+  PrintReport
+  PrintRunningReport
 end
 
 enum DrainState
@@ -108,7 +110,7 @@ enum WaitReason
   # no reason, go ahead
   None
   # task is already running
-  Running
+  AlreadyRunning
   # task has a task group and one of that groups members is running
   Serial
   # task depends on a task that has not completed successfully
@@ -120,7 +122,7 @@ enum WaitReason
 end
 
 def format_time_span(t)
-  "#{(t.days*24) + t.hours}:#{t.minutes}:#{t.seconds}"
+  "#{(t.days*24) + t.hours}:#{t.minutes}:#{t.seconds}".gsub(/^00?:/, "")
 end
 
 def parse_when(txt)
@@ -186,8 +188,9 @@ class GlobalConfig
   @autosave : Time::Span = 600.seconds
   @workdir : String? = nil
   @include_paths = [] of String
+  @print_report = true
 
-  getter test, error, mail, ignore_overtime, include_paths
+  getter test, error, mail, ignore_overtime, include_paths, print_report
   getter! workdir, autosave
 
   def initialize(data : YAML::Any)
@@ -197,6 +200,8 @@ class GlobalConfig
         @include_paths.concat(v.as_a.map &.as_s)
       when "autosave"
         @autosave = v.as_i.seconds
+      when "print_report"
+        @print_report = v.as_bool
       when "ignore_overtime"
         @ignore_overtime = v.as_bool
       when "mail"
@@ -405,6 +410,10 @@ class TaskState
   @parent_status = Hash(String, Bool).new
   @sp : Process? = nil
   getter parent_status
+
+  def run_time
+    Time.local - @current_start.not_nil!
+  end
 
   def should_notify_overtime?
     # only notify if we're running
@@ -629,7 +638,7 @@ class TaskState
     end
     # don't run the same task in parallel
     if @running
-      return TaskWaitState.new(task: @task, reason: WaitReason::Running, text: @task.name, time: 0.seconds)
+      return TaskWaitState.new(task: @task, reason: WaitReason::AlreadyRunning, text: @task.name, time: 0.seconds)
     end
     rr = @schedule.running.map &.task.name
     # don't run a task in parallel with any other task in the same serial group
@@ -680,6 +689,8 @@ class Schedule
   @crontab : String
   @autosave : Time::Span = 0.seconds
   property :test
+  @print_report = true
+  @reasons = [] of TaskWaitState
 
   delegate :select, to: @schedule
 
@@ -769,6 +780,7 @@ class Schedule
     ct = Crontab.new @crontab
     ct.verify
     @autosave = ct.global.autosave
+    @print_report = ct.global.print_report
     @schedule.clear
     add_tasks ct.tasks
     if !@immediate
@@ -782,6 +794,23 @@ class Schedule
       sleep wait_time
       run_state_chan.send RunState::Save
     end
+  end
+
+  def print_running_report
+    t = @schedule.select &.running?
+    t.sort_by! { |i| i.task.name }
+    t.each do |i|
+      puts "#{i.task.name}, #{i.run_time}"
+    end
+    puts "-----"
+  end
+
+  def print_report
+    puts "as of #{Time.local}"
+    @reasons.each do |r|
+      puts "#{r[:task].name}, #{r[:reason].none? || r[:reason].already_running? ? "running" : r[:reason].to_s}: #{r[:text]} #{format_time_span(r[:time])}"
+    end
+    puts "-----"
   end
 
   def loop(run_state_channel : Channel(RunState)? = nil)
@@ -847,17 +876,25 @@ class Schedule
         timeouts = reasons.select { |i| i[:reason].wait? }.map { |i| i[:time] }
         shortest_timeout = timeouts.size > 0 ? timeouts.min : 1.hour
         reasons.sort_by! do |i|
-          i[:time]
+          ({i[:reason], i[:time], i[:task].name})
         end
-        reasons.each do |r|
-          puts "#{r[:task].name}, #{r[:reason].none? ? "running" : r[:reason].to_s}: #{r[:text]} #{format_time_span(r[:time])}"
-        end
-        puts "-----"
-      end # if normal and not draining
+        @reasons = reasons
+        if @print_report
+          print_report
+        end # print tasks
+      end   # if normal and not draining
       # wait on events from any task
       # puts timeout_reasons
       select
       when t = run_state_channel.receive
+        if t.print_report?
+          print_report
+          next
+        end
+        if t.print_running_report?
+          print_running_report
+          next
+        end
         if !run_state.normal?
           puts "requested run state #{t} but currently have run state #{run_state} drain state #{drain_state}"
           next
@@ -940,6 +977,12 @@ def main
   end
   Signal::INT.trap do
     run_state_chan.send RunState::Exit
+  end
+  Signal::USR1.trap do
+    run_state_chan.send RunState::PrintReport
+  end
+  Signal::USR2.trap do
+    run_state_chan.send RunState::PrintRunningReport
   end
   t = Schedule.new test: test, immediate: immediate, filter: filter, crontab: ct
   puts "crdo running with pid #{Process.pid},#{immediate ? " immediate" : ""} #{test ? "test" : "normal"} mode"

@@ -12,13 +12,21 @@ crystal build crdo.cr
 ./crdo
 ```
 
+## Controls
+
+You can send signals to the running crdo instance:
+- HUP reloads the config (and adds/removes tasks as needed)
+- USR1 prints a state report for all tasks
+- USR2 lists running tasks and the amount of time each has been running
+Before the config is reloaded, all running jobs are allowed to complete, and new jobs are not queued.
+
 ## Notes
 
 I have explicitly chosen not to track the state of dependent tasks across restarts.
 After a restart, all parent tasks must run once before their child tasks are eligible to run again.
 If this tool handled reloading of dependent statuses,
 the load/save functionality would immediately gain complexity,
-and saved state would cause a causal link between (possibly) changed dependent values in the scheduling file.
+and saved state would cause a causal link between (possibly) changed dependent values in the yml file.
 
 ## Todo
 

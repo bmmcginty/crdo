@@ -11,8 +11,11 @@ global:
   # if set, do not send errors for tasks that run long enough to interfear with their next schedule run
   ignore_overtime: false
   # boolean
+  # if set to false, do not print a report each time any task changes state
+  print_report: true
+  # boolean
   # if set to true, tasks will be prepended with the echo command.
-  # This allows the operator to verify teh commands that will be run, including variable substitution.
+  # This allows the operator to verify the commands that will be run, including variable substitution.
   test: false
   # path
   # This directory is the base to any relative paths in commands in this file.
