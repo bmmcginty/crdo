@@ -86,19 +86,23 @@ struct TimeMatcher
   end
 
   def match(t : Time)
+    ret = true
     if @minute && t.minute != @minute.not_nil!
-      false
-    elsif @hour && t.hour != @hour.not_nil!
-      false
-    elsif @day && t.day != @day.not_nil!
-      false
-    elsif @month && t.month != @month.not_nil!
-      false
-    else
-      true
+      ret = false
     end
-  end
-end
+    if @hour && t.hour != @hour.not_nil!
+      ret = false
+    end
+    if @day && t.day != @day.not_nil!
+      ret = false
+    end
+    if @month && t.month != @month.not_nil!
+      ret = false
+    end
+    ret
+  end # def
+
+end # class
 
 enum WaitReason
   # no reason, go ahead
@@ -625,7 +629,7 @@ class TaskState
     end
     # don't run the same task in parallel
     if @running
-      return TaskWaitState.new(task: @task, reason: WaitReason::None, text: @task.name, time: 0.seconds)
+      return TaskWaitState.new(task: @task, reason: WaitReason::Running, text: @task.name, time: 0.seconds)
     end
     rr = @schedule.running.map &.task.name
     # don't run a task in parallel with any other task in the same serial group
@@ -657,11 +661,11 @@ class TaskState
                 else
                   Time.local - @last_start.not_nil!
                 end
-      if elapsed >= @task.every.not_nil!
-        return TaskWaitState.new(task: @task, reason: WaitReason::None, text: "", time: 0.seconds)
+      if elapsed < @task.every.not_nil!
+        # need to wait
+        return TaskWaitState.new(task: @task, reason: WaitReason::Wait, text: "", time: (@task.every.not_nil! - elapsed))
       end
-      # need to wait
-      return TaskWaitState.new(task: @task, reason: WaitReason::Wait, text: "", time: (@task.every.not_nil! - elapsed))
+      return TaskWaitState.new(task: @task, reason: WaitReason::None, text: "", time: 0.seconds)
     end # if every
     raise Exception.new("task does not have every or when")
   end # def
