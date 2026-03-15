@@ -328,6 +328,10 @@ class Crontab
 
   def initialize(path)
     crdo_path = Path[path].expand(home: true)
+    if !File.exists?(crdo_path)
+      STDERR.puts "config file not found: #{crdo_path}"
+      exit 1
+    end
     t = YAML.parse File.read(crdo_path)
     @global = GlobalConfig.new t["global"]
     @global.include_paths.each do |include_path|
