@@ -34,28 +34,37 @@ class ScheduleLoopController
     @reasons = reasons
   end
 
-  def handle_run_state_request(requested : RunState)
+  def handle_event(event : ScheduleEvent, immediate : Bool, all_tasks_have_run_once : Bool = false) : ScheduleEventAction
+    case event.kind
+    when .run_state_request?
+      handle_run_state_request(event.run_state.not_nil!)
+    when .task_completed?
+      immediate && all_tasks_have_run_once ? ScheduleEventAction::BreakLoop : ScheduleEventAction::None
+    when .timeout?
+      ScheduleEventAction::None
+    else
+      ScheduleEventAction::None
+    end
+  end
+
+  private def handle_run_state_request(requested : RunState) : ScheduleEventAction
     if requested.print_report?
-      return RunStateRequestAction::PrintReport
+      return ScheduleEventAction::PrintReport
     end
     if requested.print_running_report?
-      return RunStateRequestAction::PrintRunningReport
+      return ScheduleEventAction::PrintRunningReport
     end
     if requested.reload?
-      return RunStateRequestAction::Reload
+      return ScheduleEventAction::Reload
     end
     if !@run_state.normal?
-      return RunStateRequestAction::Invalid
+      return ScheduleEventAction::Invalid
     end
     if requested.save?
-      return RunStateRequestAction::Save
+      return ScheduleEventAction::Save
     end
     @run_state = requested
     @drain_state = DrainState::Draining
-    RunStateRequestAction::Transition
-  end
-
-  def immediate_complete?(immediate : Bool, all_tasks_have_run_once : Bool)
-    immediate && all_tasks_have_run_once
+    ScheduleEventAction::Transition
   end
 end

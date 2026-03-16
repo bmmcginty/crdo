@@ -173,28 +173,35 @@ class Schedule
   end
 
   private def handle_schedule_event(event : ScheduleEvent, controller : ScheduleLoopController) : Bool
-    case event.kind
-    when .run_state_request?
-      requested = event.run_state.not_nil!
-      case controller.handle_run_state_request(requested)
-      when .print_report?
-        print_report
-      when .print_running_report?
-        print_running_report
-      when .reload?
-        load
-      when .invalid?
-        @reporter.invalid_transition(requested, controller.run_state, controller.drain_state)
-      when .save?
-        save_state
-      when .transition?
-        @reporter.run_state_changed(controller.run_state)
-      end
-      false
-    when .task_completed?
+    if event.kind.task_completed?
       stopped(event.task_event.not_nil!)
-      controller.immediate_complete?(@immediate, all_tasks_have_run_once_since?(controller.loop_start_time))
-    when .timeout?
+    end
+    case controller.handle_event(
+           event,
+           @immediate,
+           all_tasks_have_run_once_since?(controller.loop_start_time)
+         )
+    when .print_report?
+      print_report
+      false
+    when .print_running_report?
+      print_running_report
+      false
+    when .reload?
+      load
+      false
+    when .invalid?
+      @reporter.invalid_transition(event.run_state.not_nil!, controller.run_state, controller.drain_state)
+      false
+    when .save?
+      save_state
+      false
+    when .transition?
+      @reporter.run_state_changed(controller.run_state)
+      false
+    when .break_loop?
+      true
+    when .none?
       false
     else
       false

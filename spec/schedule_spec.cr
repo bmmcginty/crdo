@@ -449,12 +449,14 @@ end
 describe ScheduleLoopController do
   it "tracks run-state transitions, invalid requests, and exit conditions" do
     controller = ScheduleLoopController.new(FakeClock.new(Time.local))
+    exit_event = ScheduleEvent.new(kind: ScheduleEventKind::RunStateRequest, run_state: RunState::Exit, task_event: nil)
+    save_event = ScheduleEvent.new(kind: ScheduleEventKind::RunStateRequest, run_state: RunState::Save, task_event: nil)
 
-    controller.handle_run_state_request(RunState::Exit).transition?.should be_true
+    controller.handle_event(exit_event, immediate: false).transition?.should be_true
     controller.run_state.exit?.should be_true
     controller.drain_state.draining?.should be_true
 
-    controller.handle_run_state_request(RunState::Save).invalid?.should be_true
+    controller.handle_event(save_event, immediate: false).invalid?.should be_true
     controller.next_action(0, false).save_and_exit?.should be_true
     controller.next_action(0, true).exit?.should be_true
   end
@@ -488,10 +490,26 @@ describe ScheduleLoopController do
 
   it "returns schedule or wait based on current loop state" do
     controller = ScheduleLoopController.new(FakeClock.new(Time.local))
+    exit_event = ScheduleEvent.new(kind: ScheduleEventKind::RunStateRequest, run_state: RunState::Exit, task_event: nil)
 
     controller.next_action(0, false).schedule_pass?.should be_true
-    controller.handle_run_state_request(RunState::Exit)
+    controller.handle_event(exit_event, immediate: false)
     controller.next_action(1, false).wait?.should be_true
+  end
+
+  it "returns break-loop for immediate completion events" do
+    controller = ScheduleLoopController.new(FakeClock.new(Time.local))
+    task = load_task("a", "every: 1s\ncommands:\n  - /bin/true\n")
+    schedule = Schedule.new(test: false, immediate: true, filter: Set(String).new, crontab: "/tmp/unused.yml")
+    state = TaskState.new(task: task, schedule: schedule)
+    event = ScheduleEvent.new(
+      kind: ScheduleEventKind::TaskCompleted,
+      run_state: nil,
+      task_event: {state, 0, 0, Time.local}
+    )
+
+    controller.handle_event(event, immediate: true, all_tasks_have_run_once: true).break_loop?.should be_true
+    controller.handle_event(event, immediate: true, all_tasks_have_run_once: false).none?.should be_true
   end
 end
 

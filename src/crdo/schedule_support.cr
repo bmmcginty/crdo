@@ -10,18 +10,20 @@ record ScheduleReloadPlan,
   retiring_removed : Array(TaskState),
   deferred_tasks : Hash(String, Task)
 
-enum RunStateRequestAction
+enum ScheduleLoopAction
+  SchedulePass
+  Wait
+  SaveAndExit
+  Exit
+end
+
+enum ScheduleEventAction
+  None
   PrintReport
   PrintRunningReport
   Reload
   Save
   Transition
   Invalid
-end
-
-enum ScheduleLoopAction
-  SchedulePass
-  Wait
-  SaveAndExit
-  Exit
+  BreakLoop
 end
