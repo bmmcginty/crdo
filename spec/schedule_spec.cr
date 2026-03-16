@@ -104,6 +104,46 @@ describe TaskRunEligibilityEvaluator do
   end
 end
 
+describe TaskStopHandler do
+  it "clears dependency requirements and propagates success to children" do
+    schedule = Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml")
+    parent = TaskState.new(
+      task: load_task("parent", "every: 1d\ncommands:\n  - /bin/true\n"),
+      schedule: schedule
+    )
+    child = TaskState.new(
+      task: load_task("child", "every: 1d\nparent: parent\ncommands:\n  - /bin/true\n"),
+      schedule: schedule
+    )
+
+    schedule.add_tasks([parent.task, child.task])
+    schedule["parent"].parent_status["upstream"] = true
+    schedule["parent"].started(Time.local - 1.second)
+    schedule["parent"].stopped(status: 0, last_command_index: 0, stop_time: Time.local)
+
+    schedule["parent"].parent_status["upstream"].should be_false
+    schedule["child"].parent_status["parent"].should be_true
+  end
+
+  it "treats test+error mode as a failure for dependency propagation" do
+    schedule = Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml")
+    parent = TaskState.new(
+      task: load_task("parent", "every: 1d\ncommands:\n  - /bin/true\n", "workdir: .\ntest: true\nerror: true"),
+      schedule: schedule
+    )
+    child = TaskState.new(
+      task: load_task("child", "every: 1d\nparent: parent\ncommands:\n  - /bin/true\n"),
+      schedule: schedule
+    )
+
+    schedule.add_tasks([parent.task, child.task])
+    schedule["parent"].started(Time.local - 1.second)
+    schedule["parent"].stopped(status: 0, last_command_index: 0, stop_time: Time.local)
+
+    schedule["child"].parent_status["parent"]?.should_not eq(true)
+  end
+end
+
 describe Schedule do
   it "lets --now ignore parent gating for the filtered task" do
     dir = unique_tmpdir("crdo-now")

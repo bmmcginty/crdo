@@ -5,6 +5,7 @@ class TaskState
   @process_runner : TaskProcessRunner
   @mailer : TaskMailer
   @run_evaluator : TaskRunEligibilityEvaluator
+  @stop_handler : TaskStopHandler
   @current_start : Time? = nil
   @last_start : Time? = nil
   @last_stop : Time? = nil
@@ -16,7 +17,7 @@ class TaskState
   @retiring = false
   getter parent_status, task, retiring, last_start, last_stop, last_status
 
-  def initialize(@task, @schedule, @process_runner = TaskProcessRunner.new, @mailer = TaskMailer.new, @run_evaluator = TaskRunEligibilityEvaluator.new)
+  def initialize(@task, @schedule, @process_runner = TaskProcessRunner.new, @mailer = TaskMailer.new, @run_evaluator = TaskRunEligibilityEvaluator.new, @stop_handler = TaskStopHandler.new)
   end
 
   def run_time
@@ -141,30 +142,7 @@ class TaskState
     @last_start = @current_start
     @last_status = status
     @last_stop = stop_time
-    success = success?
-    if @task.global.test && @task.global.error
-      success = false
-    end
-    @parent_status.keys.each do |k|
-      @parent_status[k] = false
-    end
-    if success
-      children = @schedule.select { |i| i.task.parent == @task.name }
-      children.each do |c|
-        c.parent_status[@task.name] = true
-      end
-    else
-      if @task.error_command
-        spawn do
-          ec = @task.hydrate_command(@task.error_command.not_nil!)
-          Process.run(command: ec[0], args: ec[1..-1], chdir: @task.global.workdir)
-        end
-        sleep 0.seconds
-      end
-      if @task.global.mail
-        @mailer.notify_failure(@task, @last_status, log_dn(@last_start.as(Time)))
-      end
-    end
+    @stop_handler.handle(self, @schedule)
   end
 
   def run(start_channel, events_channel)
