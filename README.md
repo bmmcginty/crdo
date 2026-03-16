@@ -30,6 +30,8 @@ and saved state would cause a causal link between (possibly) changed dependent v
 
 ## Todo
 
+* ensure zero values never get written to save file
+* add when_run_if_late to allow running a task if it has not occured within the last instance specified in when
 * on hup or ^c, allow killing running tasks after a configurable timeout
 * Ensure that a task does not run more than once in an assigned time period (other than retry-after-error)
 * specs

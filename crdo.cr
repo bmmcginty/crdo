@@ -117,12 +117,14 @@ enum WaitReason
   Depend
   # wait for specific time or time interval to pass
   Wait
+  # task is marked $exclusive and other non-exclusive tasks are running
+  Exclusive
   # task is disabled in crontab
   Disabled
 end
 
 def format_time_span(t)
-  "#{(t.days*24) + t.hours}:#{t.minutes}:#{t.seconds}".gsub(/^00?:/, "")
+  "#{((t.days*24) + t.hours).to_s.rjust(2,'0')}:#{(t.minutes).to_s.rjust(2,'0')}:#{t.seconds.to_s.rjust(2,'0')}".gsub(/^00?:/, "")
 end
 
 def parse_when(txt)
@@ -638,12 +640,19 @@ class TaskState
     end
     # don't run the same task in parallel
     if @running
-      return TaskWaitState.new(task: @task, reason: WaitReason::AlreadyRunning, text: @task.name, time: 0.seconds)
+      return TaskWaitState.new(task: @task, reason: WaitReason::AlreadyRunning, text: @task.name, time: run_time)
     end
-    rr = @schedule.running.map &.task.name
+    # if we're $exclusive, don't run if anything else is running
+    if @task.group=="$exclusive" && @schedule.running.size>0
+      return TaskWaitState.new(task: @task, reason: WaitReason::Exclusive, text: "*", time: 0.seconds)
+    end
     # don't run a task in parallel with any other task in the same serial group
     if @task.group && @schedule.running.any? { |i| i.task.group == @task.group }
       return TaskWaitState.new(task: @task, reason: WaitReason::Serial, text: @task.group.not_nil!, time: 0.seconds)
+    end
+    # don't run if any $exclusive tasks are running
+    if @schedule.running.any? { |i| i.task.group == "$exclusive" }
+      return TaskWaitState.new(task: @task, reason: WaitReason::Serial, text: "$exclusive", time: 0.seconds)
     end
     # don't run a task if it has a prerequisit task and that task has not been completed
     if @task.parent && @parent_status[@task.parent.not_nil!] == false
@@ -783,6 +792,7 @@ class Schedule
     @print_report = ct.global.print_report
     @schedule.clear
     add_tasks ct.tasks
+    @schedule.sort_by! {|i| (i.task.group=="$exclusive" ? 0 : 1) }
     if !@immediate
       load_task_state?
     end
@@ -808,7 +818,8 @@ class Schedule
   def print_report
     puts "as of #{Time.local}"
     @reasons.each do |r|
-      puts "#{r[:task].name}, #{r[:reason].none? || r[:reason].already_running? ? "running" : r[:reason].to_s}: #{r[:text]} #{format_time_span(r[:time])}"
+marker=""
+      puts "#{r[:task].name}, #{r[:reason].none? || r[:reason].already_running? ? "running" : r[:reason].to_s}: #{r[:text]} #{marker}#{format_time_span(r[:time])}"
     end
     puts "-----"
   end
