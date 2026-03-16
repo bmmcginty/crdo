@@ -214,15 +214,15 @@ class Schedule
       sleep(0.seconds)
     end
     while 1
-      controller.note_running_count(running.size)
-      if controller.should_save_before_exit?(@immediate)
+      case controller.next_action(running.size, @immediate)
+      when .save_and_exit?
         save_state
-      end
-      if controller.should_exit?
         exit
-      end
-      if controller.scheduling_open?
+      when .exit?
+        exit
+      when .schedule_pass?
         apply_scheduling_pass(controller, do_filter, chan, events)
+      when .wait?
       end
       event = @loop_waiter.wait(run_state_channel, events, controller.shortest_timeout)
       if handle_schedule_event(event, controller)

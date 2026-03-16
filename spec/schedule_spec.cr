@@ -455,9 +455,8 @@ describe ScheduleLoopController do
     controller.drain_state.draining?.should be_true
 
     controller.handle_run_state_request(RunState::Save).invalid?.should be_true
-    controller.note_running_count(0)
-    controller.should_save_before_exit?(false).should be_true
-    controller.should_exit?.should be_true
+    controller.next_action(0, false).save_and_exit?.should be_true
+    controller.next_action(0, true).exit?.should be_true
   end
 
   it "sorts wait reasons and tracks the shortest timeout" do
@@ -485,6 +484,14 @@ describe ScheduleLoopController do
 
     controller.shortest_timeout.should eq(2.seconds)
     controller.reasons.map { |reason| reason[:task].name }.should eq(["b", "c", "a"])
+  end
+
+  it "returns schedule or wait based on current loop state" do
+    controller = ScheduleLoopController.new(FakeClock.new(Time.local))
+
+    controller.next_action(0, false).schedule_pass?.should be_true
+    controller.handle_run_state_request(RunState::Exit)
+    controller.next_action(1, false).wait?.should be_true
   end
 end
 

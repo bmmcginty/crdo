@@ -12,22 +12,17 @@ class ScheduleLoopController
     @loop_start_time = @clock.now
   end
 
-  def scheduling_open?
-    @run_state.normal? && @drain_state.none?
-  end
-
-  def note_running_count(running_count : Int32)
+  def next_action(running_count : Int32, immediate : Bool) : ScheduleLoopAction
     if @drain_state.draining? && running_count == 0
       @drain_state = DrainState::Drained
     end
-  end
-
-  def should_save_before_exit?(immediate : Bool)
-    @drain_state.drained? && @run_state.exit? && !immediate
-  end
-
-  def should_exit?
-    @drain_state.drained? && @run_state.exit?
+    if @drain_state.drained? && @run_state.exit?
+      return immediate ? ScheduleLoopAction::Exit : ScheduleLoopAction::SaveAndExit
+    end
+    if @run_state.normal? && @drain_state.none?
+      return ScheduleLoopAction::SchedulePass
+    end
+    ScheduleLoopAction::Wait
   end
 
   def update_reasons(reasons : Array(TaskWaitState))

@@ -18,3 +18,10 @@ enum RunStateRequestAction
   Transition
   Invalid
 end
+
+enum ScheduleLoopAction
+  SchedulePass
+  Wait
+  SaveAndExit
+  Exit
+end
