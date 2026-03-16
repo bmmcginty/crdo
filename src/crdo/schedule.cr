@@ -9,11 +9,15 @@ class Schedule
   @print_report = true
   @reasons = [] of TaskWaitState
   @deferred_tasks = Hash(String, Task).new
+  @state_store : ScheduleStateStore
+  @reporter : ScheduleReporter
 
   delegate :select, to: @schedule
   getter immediate, filter
 
   def initialize(@test, @immediate, @filter, @crontab)
+    @state_store = ScheduleStateStore.new(@crontab)
+    @reporter = ScheduleReporter.new
   end
 
   def [](name : String)
@@ -57,47 +61,12 @@ class Schedule
     end
   end
 
-  def load_state_data
-    path = @crontab + ".state"
-    src = Path[path].expand(home: true)
-    return nil unless File.exists?(src)
-    state = JSON.parse(File.read(src))
-    if state.raw.is_a?(Array)
-      state.as_a
-    else
-      version = state["version"]?.try(&.as_i?) || 1
-      raise Exception.new("unsupported state version #{version}") unless version == 2
-      state["tasks"].as_a
-    end
-  end
-
   def load_task_state?
-    err = false
-    state_data = load_state_data
-    return false unless state_data
-    state_data.each do |ts|
-      task_state = self[ts["name"].as_s]?
-      if !task_state
-        err = true
-        next
-      end
-      task_state.not_nil!.set_state(ts)
-    end
-    err == false
+    @state_store.load_task_state?(self)
   end
 
   def save_state
-    path = @crontab + ".state"
-    dest = Path[path].expand(home: true).to_s
-    File.write(
-      dest + ".tmp",
-      {
-        version: 2,
-        tasks: @schedule,
-      }.to_json)
-    File.rename(
-      dest + ".tmp",
-      dest)
+    @state_store.save(@schedule)
   end
 
   def activate_deferred_task(name, snapshot)
@@ -109,14 +78,7 @@ class Schedule
   end
 
   def next_task_wait(state : TaskState)
-    wait_state = state.should_run?
-    if wait_state[:reason].wait?
-      next_time = Time.local + wait_state[:time]
-      "#{format_time_span(wait_state[:time])} (#{next_time})"
-    else
-      next_time = state.next_scheduled_time
-      "#{format_time_span(next_time - Time.local)} (#{next_time})"
-    end
+    @reporter.next_task_wait(state)
   end
 
   def load(initial = false)
@@ -187,20 +149,11 @@ class Schedule
   end
 
   def print_running_report
-    t = @schedule.select(&.running?)
-    t.sort_by! { |i| i.task.name }
-    t.each do |i|
-      puts "#{i.task.name}, #{i.run_time}"
-    end
-    puts "-----"
+    @reporter.print_running_report(@schedule)
   end
 
   def print_report
-    puts "as of #{Time.local}"
-    @reasons.each do |r|
-      puts "#{r[:task].name}, #{r[:reason].none? || r[:reason].already_running? ? "running" : r[:reason].to_s}: #{r[:text]} #{format_time_span(r[:time])}"
-    end
-    puts "-----"
+    @reporter.print_report(@reasons)
   end
 
   def loop(run_state_channel : Channel(RunState)? = nil)
@@ -275,7 +228,7 @@ class Schedule
           next
         end
         if !run_state.normal?
-          puts "requested run state #{t} but currently have run state #{run_state} drain state #{drain_state}"
+          @reporter.invalid_transition(t, run_state, drain_state)
           next
         end
         if t.save?
@@ -284,7 +237,7 @@ class Schedule
         end
         run_state = t
         drain_state = DrainState::Draining
-        puts "run state #{run_state}"
+        @reporter.run_state_changed(run_state)
         next
       when x = events.receive
         stopped(x)
@@ -304,18 +257,13 @@ class Schedule
 
   def started(task, start_time)
     task.started(start_time)
-    puts "start #{task.task.name} at #{start_time}"
+    @reporter.started(task, start_time)
   end
 
   def stopped(x)
     task_state = x[0]
     task_state.stopped(status: x[1], last_command_index: x[2], stop_time: x[3])
-    duration = if task_state.last_start && task_state.last_stop
-                 task_state.last_stop.not_nil! - task_state.last_start.not_nil!
-               else
-                 0.seconds
-               end
-    puts "stop #{task_state.task.name} rc=#{x[1]} duration=#{format_time_span(duration)} next=#{next_task_wait(task_state)}"
+    @reporter.stopped(task_state, x[1], next_task_wait(task_state))
     if task_state.retiring && !task_state.running?
       @schedule.delete(task_state)
       activate_deferred_task(task_state.task.name, task_state.state_snapshot)

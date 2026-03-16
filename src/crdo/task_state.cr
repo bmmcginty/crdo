@@ -2,6 +2,8 @@ class TaskState
   @errors = [] of Exception
   @schedule : Schedule
   @task : Task
+  @process_runner : TaskProcessRunner
+  @mailer : TaskMailer
   @current_start : Time? = nil
   @last_start : Time? = nil
   @last_stop : Time? = nil
@@ -13,7 +15,7 @@ class TaskState
   @retiring = false
   getter parent_status, task, retiring, last_start, last_stop, last_status
 
-  def initialize(@task, @schedule)
+  def initialize(@task, @schedule, @process_runner = TaskProcessRunner.new, @mailer = TaskMailer.new)
   end
 
   def run_time
@@ -65,11 +67,7 @@ class TaskState
 
   def notify_overtime
     @overtime_occured = true
-    send_mail(
-      to: @task.global.mail.not_nil!,
-      subject: "Task #{@task.name} now in overtime",
-      body: nil,
-      attach: nil)
+    @mailer.notify_overtime(@task)
   end
 
   def to_json(json : JSON::Builder)
@@ -120,8 +118,7 @@ class TaskState
   end
 
   def log_dn(ts)
-    t = ts.to_s("%Y-%m-%d/%H-%M-%S")
-    "#{@task.global.workdir}/cron_logs/#{@task.name}/#{t}"
+    @process_runner.log_dn(@task, ts)
   end
 
   def next_scheduled_time(now = Time.local)
@@ -164,47 +161,9 @@ class TaskState
         sleep 0.seconds
       end
       if @task.global.mail
-        subject = "task #{@task.name} exitted #{@last_status}"
-        dn = log_dn(@last_start.as(Time))
-        fl = Dir.glob("#{dn}/*")
-        body = IO::Memory.new
-        if @task.error_body
-          body << @task.error_body
-          body << "\n"
-        end
-        body << "See attached files."
-        send_mail(
-          to: @task.global.mail.not_nil!,
-          subject: subject,
-          attach: fl,
-          body: body)
+        @mailer.notify_failure(@task, @last_status, log_dn(@last_start.as(Time)))
       end
     end
-  end
-
-  def send_mail(to, subject, body : IO | String | Nil, attach : Array(String)?)
-    body = case body
-           when String
-             IO::Memory.new(body)
-           when Nil
-             IO::Memory.new
-           else
-             body
-           end
-    args = [] of String
-    args += ["-s", subject]
-    if attach
-      attach.each do |f|
-        args += ["--attach", f]
-      end
-    end
-    args << to
-    body.seek(0)
-    Process.run(
-      command: "/usr/bin/mail",
-      args: args,
-      input: body
-    )
   end
 
   def run(start_channel, events_channel)
@@ -228,31 +187,13 @@ class TaskState
   end
 
   def run(args : Array(String), idx : Int32, start_time : Time)
-    if @schedule.test
-      args = args.clone
-      args.unshift("echo")
-    end
-    dn = log_dn(start_time)
-    Dir.mkdir_p(dn)
-    File.write("#{dn}/#{idx}.cmdline", args.to_json)
-    error_fh = File.open("#{dn}/#{idx}.stderr", "wb")
-    output_fh = File.open("#{dn}/#{idx}.stdout", "wb")
     begin
-      @sp = Process.new(
-        command: args[0],
-        args: args[1..-1],
-        error: error_fh,
-        output: output_fh,
-        chdir: @task.global.workdir
-      )
-      ret = @sp.not_nil!.wait.exit_code
+      ret = @process_runner.run(@task, args, idx, start_time, @schedule.test)
     rescue e
-      error_fh << "\n#{e.inspect}"
-    ensure
-      error_fh.close
-      output_fh.close
+      @errors << e
+      raise e
     end
-    ret.not_nil!
+    ret
   end
 
   def should_run? : TaskWaitState
