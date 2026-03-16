@@ -21,7 +21,7 @@ class TaskState
   end
 
   def run_time
-    Time.local - @current_start.not_nil!
+    @schedule.clock.now - @current_start.not_nil!
   end
 
   def task=(task : Task)
@@ -61,7 +61,7 @@ class TaskState
     if @task.global.ignore_overtime
       return false
     end
-    if @task.every && (Time.local - @current_start.not_nil!) > @task.every.not_nil!
+    if @task.every && (@schedule.clock.now - @current_start.not_nil!) > @task.every.not_nil!
       return true
     end
     false
@@ -123,17 +123,18 @@ class TaskState
     @process_runner.log_dn(@task, ts)
   end
 
-  def next_scheduled_time(now = Time.local)
+  def next_scheduled_time(now : Time? = nil)
+    now = now || @schedule.clock.now
     if @task.when_specs.size > 0
-      return @task.when_specs.map { |matcher| matcher.find_next(now) }.min
+      return @task.when_specs.map { |matcher| matcher.find_next(now.not_nil!) }.min
     end
-    return now unless @task.every
+    return now.not_nil! unless @task.every
     base = if @task.use_stop_time
              @last_stop || @last_start
            else
              @last_start
            end
-    return now unless base
+    return now.not_nil! unless base
     base.not_nil! + @task.every.not_nil!
   end
 
@@ -147,7 +148,7 @@ class TaskState
 
   def run(start_channel, events_channel)
     @errors.clear
-    ts = Time.local
+    ts = @schedule.clock.now
     start_channel.send(ts)
     last_command = -1
     rc = 0
@@ -162,7 +163,7 @@ class TaskState
       end
       break if rc != 0
     end
-    events_channel.send({self, rc, last_command, Time.local})
+    events_channel.send({self, rc, last_command, @schedule.clock.now})
   end
 
   def run(args : Array(String), idx : Int32, start_time : Time)
@@ -182,6 +183,6 @@ class TaskState
         running: @schedule.running,
         immediate: @schedule.immediate,
         filter: @schedule.filter,
-        now: Time.local))
+        now: @schedule.clock.now))
   end
 end

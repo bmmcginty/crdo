@@ -1,6 +1,21 @@
 require "spec"
 require "../crdo"
 
+class FakeClock < Clock
+  @current : Time
+
+  def initialize(@current : Time)
+  end
+
+  def now : Time
+    @current
+  end
+
+  def now=(time : Time)
+    @current = time
+  end
+end
+
 def unique_tmpdir(prefix = "crdo-spec")
   path = "/tmp/#{prefix}-#{Process.pid}-#{Time.utc.to_unix_ms}-#{Random.rand(1_000_000)}"
   Dir.mkdir_p(path)

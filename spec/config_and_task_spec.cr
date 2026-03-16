@@ -86,3 +86,31 @@ describe Crontab do
     end
   end
 end
+
+describe CrontabSourceLoader do
+  it "loads includes into a merged source document" do
+    dir = unique_tmpdir("crdo-loader")
+    write_yaml("#{dir}/child.yml", "b:\n  every: 1s\n  commands:\n    - /bin/true\n")
+    root = write_yaml(
+      "#{dir}/root.yml",
+      "global:\n  workdir: .\n  include: child.yml\na:\n  every: 1s\n  commands:\n    - /bin/true\n"
+    )
+
+    global, source = CrontabSourceLoader.new(root).load
+
+    global.workdir.should_not be_nil
+    source["a"]?.should_not be_nil
+    source["b"]?.should_not be_nil
+  end
+end
+
+describe CrontabVerifier do
+  it "checks dependencies directly" do
+    tasks = [
+      load_task("a", "every: 1s\ncommands:\n  - /bin/true\n"),
+      load_task("b", "every: 1s\nparent: a\ncommands:\n  - /bin/true\n"),
+    ]
+
+    CrontabVerifier.new.verify!(tasks).should be_nil
+  end
+end

@@ -1,0 +1,55 @@
+class ScheduleReporter
+  @clock : Clock
+
+  def initialize(@clock : Clock)
+  end
+
+  def next_task_wait(state : TaskState)
+    wait_state = state.should_run?
+    if wait_state[:reason].wait?
+      next_time = @clock.now + wait_state[:time]
+      "#{format_time_span(wait_state[:time])} (#{next_time})"
+    else
+      next_time = state.next_scheduled_time
+      "#{format_time_span(next_time - @clock.now)} (#{next_time})"
+    end
+  end
+
+  def print_running_report(schedule : Array(TaskState))
+    running = schedule.select(&.running?)
+    running.sort_by! { |i| i.task.name }
+    running.each do |i|
+      puts "#{i.task.name}, #{i.run_time}"
+    end
+    puts "-----"
+  end
+
+  def print_report(reasons : Array(TaskWaitState))
+    puts "as of #{@clock.now}"
+    reasons.each do |r|
+      puts "#{r[:task].name}, #{r[:reason].none? || r[:reason].already_running? ? "running" : r[:reason].to_s}: #{r[:text]} #{format_time_span(r[:time])}"
+    end
+    puts "-----"
+  end
+
+  def started(task : TaskState, start_time : Time)
+    puts "start #{task.task.name} at #{start_time}"
+  end
+
+  def stopped(task : TaskState, status : Int32, next_wait : String)
+    duration = if task.last_start && task.last_stop
+                 task.last_stop.not_nil! - task.last_start.not_nil!
+               else
+                 0.seconds
+               end
+    puts "stop #{task.task.name} rc=#{status} duration=#{format_time_span(duration)} next=#{next_wait}"
+  end
+
+  def run_state_changed(run_state : RunState)
+    puts "run state #{run_state}"
+  end
+
+  def invalid_transition(requested : RunState, current : RunState, drain_state : DrainState)
+    puts "requested run state #{requested} but currently have run state #{current} drain state #{drain_state}"
+  end
+end

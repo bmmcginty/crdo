@@ -4,6 +4,7 @@ class Schedule
   @immediate : Bool
   @filter : Set(String)
   @crontab : String
+  @clock : Clock
   @autosave : Time::Span = 0.seconds
   property :test
   @print_report = true
@@ -13,11 +14,11 @@ class Schedule
   @reporter : ScheduleReporter
 
   delegate :select, to: @schedule
-  getter immediate, filter
+  getter immediate, filter, clock
 
-  def initialize(@test, @immediate, @filter, @crontab)
+  def initialize(@test, @immediate, @filter, @crontab, @clock : Clock = SystemClock.new)
     @state_store = ScheduleStateStore.new(@crontab)
-    @reporter = ScheduleReporter.new
+    @reporter = ScheduleReporter.new(@clock)
   end
 
   def [](name : String)
@@ -145,7 +146,7 @@ class Schedule
     reasons = [] of TaskWaitState
     chan = Channel(Time).new
     events = Channel(Tuple(TaskState, Int32, Int32, Time)).new
-    controller = ScheduleLoopController.new
+    controller = ScheduleLoopController.new(@clock)
     do_filter = @filter.size > 0
     load(true)
     if @autosave > 0.seconds

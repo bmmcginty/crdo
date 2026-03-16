@@ -57,6 +57,26 @@ describe TaskState do
 
     state.should_run?[:reason].wait?.should be_true
   end
+
+  it "uses the injected schedule clock for should_run timing" do
+    clock = FakeClock.new(Time.local)
+    schedule = Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml", clock: clock)
+    task = load_task(
+      "a",
+      "every: 10s\ncommands:\n  - /bin/true\n"
+    )
+    state = TaskState.new(task: task, schedule: schedule)
+    state.apply_snapshot(
+      TaskStateSnapshot.new(
+        last_start: clock.now - 8.seconds,
+        last_stop: nil,
+        last_status: 0)
+    )
+
+    state.should_run?[:reason].wait?.should be_true
+    clock.now = clock.now + 3.seconds
+    state.should_run?[:reason].none?.should be_true
+  end
 end
 
 describe TaskRunEligibilityEvaluator do
@@ -296,7 +316,7 @@ end
 
 describe ScheduleLoopController do
   it "tracks run-state transitions, invalid requests, and exit conditions" do
-    controller = ScheduleLoopController.new
+    controller = ScheduleLoopController.new(FakeClock.new(Time.local))
 
     controller.handle_run_state_request(RunState::Exit).transition?.should be_true
     controller.run_state.exit?.should be_true
@@ -309,7 +329,7 @@ describe ScheduleLoopController do
   end
 
   it "sorts wait reasons and tracks the shortest timeout" do
-    controller = ScheduleLoopController.new
+    controller = ScheduleLoopController.new(FakeClock.new(Time.local))
     a = TaskWaitState.new(
       task: load_task("a", "every: 1s\ncommands:\n  - /bin/true\n"),
       reason: WaitReason::Wait,
@@ -333,5 +353,24 @@ describe ScheduleLoopController do
 
     controller.shortest_timeout.should eq(2.seconds)
     controller.reasons.map { |reason| reason[:task].name }.should eq(["b", "c", "a"])
+  end
+end
+
+describe ScheduleReporter do
+  it "uses the injected clock when formatting wait times" do
+    clock = FakeClock.new(Time.local(2026, 3, 16, 10, 0, 0))
+    reporter = ScheduleReporter.new(clock)
+    schedule = Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml", clock: clock)
+    task = load_task("a", "every: 10s\ncommands:\n  - /bin/true\n")
+    state = TaskState.new(task: task, schedule: schedule)
+    state.apply_snapshot(
+      TaskStateSnapshot.new(
+        last_start: clock.now - 8.seconds,
+        last_stop: nil,
+        last_status: 0)
+    )
+
+    reporter.next_task_wait(state).should contain("00:02")
+    reporter.next_task_wait(state).should contain("2026-03-16 10:00:02")
   end
 end
