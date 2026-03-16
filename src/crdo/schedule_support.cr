@@ -28,6 +28,10 @@ enum ScheduleEventAction
   BreakLoop
 end
 
+record ScheduleEventDecision,
+  action : ScheduleEventAction,
+  requested_run_state : RunState?
+
 enum SchedulePassAction
   StartTask
   NotifyOvertime

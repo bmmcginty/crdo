@@ -34,37 +34,41 @@ class ScheduleLoopController
     @reasons = reasons
   end
 
-  def handle_event(event : ScheduleEvent, immediate : Bool, all_tasks_have_run_once : Bool = false) : ScheduleEventAction
+  def handle_event(event : ScheduleEvent, immediate : Bool, all_tasks_have_run_once : Bool = false) : ScheduleEventDecision
     case event.kind
     when .run_state_request?
       handle_run_state_request(event.run_state.not_nil!)
     when .task_completed?
-      immediate && all_tasks_have_run_once ? ScheduleEventAction::BreakLoop : ScheduleEventAction::None
+      if immediate && all_tasks_have_run_once
+        ScheduleEventDecision.new(action: ScheduleEventAction::BreakLoop, requested_run_state: nil)
+      else
+        ScheduleEventDecision.new(action: ScheduleEventAction::None, requested_run_state: nil)
+      end
     when .timeout?
-      ScheduleEventAction::None
+      ScheduleEventDecision.new(action: ScheduleEventAction::None, requested_run_state: nil)
     else
-      ScheduleEventAction::None
+      ScheduleEventDecision.new(action: ScheduleEventAction::None, requested_run_state: nil)
     end
   end
 
-  private def handle_run_state_request(requested : RunState) : ScheduleEventAction
+  private def handle_run_state_request(requested : RunState) : ScheduleEventDecision
     if requested.print_report?
-      return ScheduleEventAction::PrintReport
+      return ScheduleEventDecision.new(action: ScheduleEventAction::PrintReport, requested_run_state: requested)
     end
     if requested.print_running_report?
-      return ScheduleEventAction::PrintRunningReport
+      return ScheduleEventDecision.new(action: ScheduleEventAction::PrintRunningReport, requested_run_state: requested)
     end
     if requested.reload?
-      return ScheduleEventAction::Reload
+      return ScheduleEventDecision.new(action: ScheduleEventAction::Reload, requested_run_state: requested)
     end
     if !@run_state.normal?
-      return ScheduleEventAction::Invalid
+      return ScheduleEventDecision.new(action: ScheduleEventAction::Invalid, requested_run_state: requested)
     end
     if requested.save?
-      return ScheduleEventAction::Save
+      return ScheduleEventDecision.new(action: ScheduleEventAction::Save, requested_run_state: requested)
     end
     @run_state = requested
     @drain_state = DrainState::Draining
-    ScheduleEventAction::Transition
+    ScheduleEventDecision.new(action: ScheduleEventAction::Transition, requested_run_state: requested)
   end
 end

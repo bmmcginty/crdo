@@ -176,11 +176,12 @@ class Schedule
     if event.kind.task_completed?
       stopped(event.task_event.not_nil!)
     end
-    case controller.handle_event(
-           event,
-           @immediate,
-           all_tasks_have_run_once_since?(controller.loop_start_time)
-         )
+    decision = controller.handle_event(
+      event,
+      @immediate,
+      all_tasks_have_run_once_since?(controller.loop_start_time)
+    )
+    case decision.action
     when .print_report?
       print_report
       false
@@ -191,7 +192,7 @@ class Schedule
       load
       false
     when .invalid?
-      @reporter.invalid_transition(event.run_state.not_nil!, controller.run_state, controller.drain_state)
+      @reporter.invalid_transition(decision.requested_run_state.not_nil!, controller.run_state, controller.drain_state)
       false
     when .save?
       save_state
