@@ -69,14 +69,14 @@ enum WaitReason
   Disabled
 end
 
-enum LoopWaitResultKind
-  RunState
-  TaskEvent
+enum ScheduleEventKind
+  RunStateRequest
+  TaskCompleted
   Timeout
 end
 
-record LoopWaitResult,
-  kind : LoopWaitResultKind,
+record ScheduleEvent,
+  kind : ScheduleEventKind,
   run_state : RunState?,
   task_event : TaskEvent?
 

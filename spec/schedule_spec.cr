@@ -6,7 +6,7 @@ end
 class RecordingLoopWaiter < LoopWaiter
   getter waits = [] of Time::Span
 
-  def wait(run_state_channel : Channel(RunState)?, events : Channel(TaskEvent), wait_time : Time::Span) : LoopWaitResult
+  def wait(run_state_channel : Channel(RunState)?, events : Channel(TaskEvent), wait_time : Time::Span) : ScheduleEvent
     @waits << wait_time
     raise StopLoopWait.new("stop after recording wait")
   end

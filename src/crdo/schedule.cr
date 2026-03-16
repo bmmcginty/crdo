@@ -146,8 +146,62 @@ class Schedule
     @reporter.print_report(@reasons)
   end
 
-  def loop(run_state_channel : Channel(RunState)? = nil)
+  private def apply_scheduling_pass(controller : ScheduleLoopController, do_filter : Bool, chan : Channel(Time), events : Channel(TaskEvent))
+    @current_now = @clock.now
     reasons = [] of TaskWaitState
+    @schedule.each do |i|
+      if do_filter && !@filter.includes?(i.task.name)
+        next
+      end
+      reason = i.should_run?
+      if reason[:reason].none?
+        spawn do
+          i.run(chan, events)
+        end
+        sleep(0.seconds)
+        started(i, chan.receive)
+      else
+        if i.should_notify_overtime?
+          notify_overtime(i)
+        end
+      end
+      reasons << reason
+    end
+    controller.update_reasons(reasons)
+    @reasons = controller.reasons
+    @previous_now = @current_now
+  end
+
+  private def handle_schedule_event(event : ScheduleEvent, controller : ScheduleLoopController) : Bool
+    case event.kind
+    when .run_state_request?
+      requested = event.run_state.not_nil!
+      case controller.handle_run_state_request(requested)
+      when .print_report?
+        print_report
+      when .print_running_report?
+        print_running_report
+      when .reload?
+        load
+      when .invalid?
+        @reporter.invalid_transition(requested, controller.run_state, controller.drain_state)
+      when .save?
+        save_state
+      when .transition?
+        @reporter.run_state_changed(controller.run_state)
+      end
+      false
+    when .task_completed?
+      stopped(event.task_event.not_nil!)
+      controller.immediate_complete?(@immediate, all_tasks_have_run_once_since?(controller.loop_start_time))
+    when .timeout?
+      false
+    else
+      false
+    end
+  end
+
+  def loop(run_state_channel : Channel(RunState)? = nil)
     chan = Channel(Time).new
     events = Channel(Tuple(TaskState, Int32, Int32, Time)).new
     controller = ScheduleLoopController.new(@clock)
@@ -168,58 +222,11 @@ class Schedule
         exit
       end
       if controller.scheduling_open?
-        @current_now = @clock.now
-        reasons.clear
-        @schedule.each do |i|
-          if do_filter && !@filter.includes?(i.task.name)
-            next
-          end
-          reason = i.should_run?
-          if reason[:reason].none?
-            spawn do
-              i.run(chan, events)
-            end
-            sleep(0.seconds)
-            started(i, chan.receive)
-          else
-            if i.should_notify_overtime?
-              notify_overtime(i)
-            end
-          end
-          reasons << reason
-        end
-        controller.update_reasons(reasons)
-        @reasons = controller.reasons
-        @previous_now = @current_now
+        apply_scheduling_pass(controller, do_filter, chan, events)
       end
-      result = @loop_waiter.wait(run_state_channel, events, controller.shortest_timeout)
-      case result.kind
-      when .run_state?
-        t = result.run_state.not_nil!
-        case controller.handle_run_state_request(t)
-        when .print_report?
-          print_report
-        when .print_running_report?
-          print_running_report
-        when .reload?
-          load
-        when .invalid?
-          @reporter.invalid_transition(t, controller.run_state, controller.drain_state)
-        when .save?
-          save_state
-        when .transition?
-          @reporter.run_state_changed(controller.run_state)
-        end
-        next
-      when .task_event?
-        x = result.task_event.not_nil!
-        stopped(x)
-        if controller.immediate_complete?(@immediate, all_tasks_have_run_once_since?(controller.loop_start_time))
-          break
-        end
-        next
-      when .timeout?
-        next
+      event = @loop_waiter.wait(run_state_channel, events, controller.shortest_timeout)
+      if handle_schedule_event(event, controller)
+        break
       end
     end
   end
