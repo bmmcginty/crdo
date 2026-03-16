@@ -59,6 +59,51 @@ describe TaskState do
   end
 end
 
+describe TaskRunEligibilityEvaluator do
+  it "uses the supplied context time for every schedules" do
+    schedule = Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml")
+    state = TaskState.new(
+      task: load_task("a", "every: 10s\ncommands:\n  - /bin/true\n"),
+      schedule: schedule
+    )
+    state.apply_snapshot(
+      TaskStateSnapshot.new(
+        last_start: Time.local - 8.seconds,
+        last_stop: nil,
+        last_status: 0)
+    )
+
+    result = TaskRunEligibilityEvaluator.new.evaluate(
+      state,
+      TaskRunContext.new(
+        running: [] of TaskState,
+        immediate: false,
+        filter: Set(String).new,
+        now: Time.local))
+
+    result[:reason].wait?.should be_true
+  end
+
+  it "lets immediate filtered tasks bypass parent gating in pure evaluation" do
+    schedule = Schedule.new(test: false, immediate: true, filter: Set{"child"}, crontab: "/tmp/unused.yml")
+    state = TaskState.new(
+      task: load_task("child", "every: 1d\nparent: parent\ncommands:\n  - /bin/true\n"),
+      schedule: schedule
+    )
+    state.parent_status["parent"] = false
+
+    result = TaskRunEligibilityEvaluator.new.evaluate(
+      state,
+      TaskRunContext.new(
+        running: [] of TaskState,
+        immediate: true,
+        filter: Set{"child"},
+        now: Time.local))
+
+    result[:reason].none?.should be_true
+  end
+end
+
 describe Schedule do
   it "lets --now ignore parent gating for the filtered task" do
     dir = unique_tmpdir("crdo-now")

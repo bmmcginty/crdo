@@ -4,6 +4,7 @@ class TaskState
   @task : Task
   @process_runner : TaskProcessRunner
   @mailer : TaskMailer
+  @run_evaluator : TaskRunEligibilityEvaluator
   @current_start : Time? = nil
   @last_start : Time? = nil
   @last_stop : Time? = nil
@@ -15,7 +16,7 @@ class TaskState
   @retiring = false
   getter parent_status, task, retiring, last_start, last_stop, last_status
 
-  def initialize(@task, @schedule, @process_runner = TaskProcessRunner.new, @mailer = TaskMailer.new)
+  def initialize(@task, @schedule, @process_runner = TaskProcessRunner.new, @mailer = TaskMailer.new, @run_evaluator = TaskRunEligibilityEvaluator.new)
   end
 
   def run_time
@@ -197,49 +198,12 @@ class TaskState
   end
 
   def should_run? : TaskWaitState
-    if @retiring
-      return TaskWaitState.new(task: @task, reason: WaitReason::Disabled, text: "retiring", time: 0.seconds)
-    end
-    if @task.disabled
-      return TaskWaitState.new(task: @task, reason: WaitReason::Disabled, text: @task.name, time: 0.seconds)
-    end
-    if @running
-      return TaskWaitState.new(task: @task, reason: WaitReason::AlreadyRunning, text: @task.name, time: run_time)
-    end
-    if @task.group == "$exclusive" && @schedule.running.size > 0
-      return TaskWaitState.new(task: @task, reason: WaitReason::Exclusive, text: "*", time: 0.seconds)
-    end
-    if @task.group && @schedule.running.any? { |i| i.task.group == @task.group }
-      return TaskWaitState.new(task: @task, reason: WaitReason::Serial, text: @task.group.not_nil!, time: 0.seconds)
-    end
-    if @schedule.running.any? { |i| i.task.group == "$exclusive" }
-      return TaskWaitState.new(task: @task, reason: WaitReason::Serial, text: "$exclusive", time: 0.seconds)
-    end
-    if @task.parent && !(@schedule.immediate && @schedule.filter.includes?(@task.name)) && @parent_status[@task.parent.not_nil!] == false
-      return TaskWaitState.new(task: @task, reason: WaitReason::Depend, text: @task.parent.not_nil!, time: 0.seconds)
-    end
-    if @task.when_specs.size > 0
-      now = Time.local
-      if @task.when_specs.any? { |matcher| (slot = matcher.current_slot_start?(now)) && (!@last_start || @last_start.not_nil! < slot.not_nil!) }
-        return TaskWaitState.new(task: @task, reason: WaitReason::None, text: "", time: 0.seconds)
-      end
-      next_time = @task.when_specs.map { |matcher| matcher.find_next(now) }.min
-      return TaskWaitState.new(task: @task, reason: WaitReason::Wait, text: "", time: next_time - now)
-    end
-    if @task.every
-      if !@last_start
-        return TaskWaitState.new(task: @task, reason: WaitReason::None, text: "", time: 0.seconds)
-      end
-      elapsed = if @task.use_stop_time
-                  Time.local - (@last_stop || @last_start).not_nil!
-                else
-                  Time.local - @last_start.not_nil!
-                end
-      if elapsed < @task.every.not_nil!
-        return TaskWaitState.new(task: @task, reason: WaitReason::Wait, text: "", time: (@task.every.not_nil! - elapsed))
-      end
-      return TaskWaitState.new(task: @task, reason: WaitReason::None, text: "", time: 0.seconds)
-    end
-    raise Exception.new("task does not have every or when")
+    @run_evaluator.evaluate(
+      self,
+      TaskRunContext.new(
+        running: @schedule.running,
+        immediate: @schedule.immediate,
+        filter: @schedule.filter,
+        now: Time.local))
   end
 end
