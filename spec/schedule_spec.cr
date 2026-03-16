@@ -129,3 +129,49 @@ describe Schedule do
     schedule["task2"]?.should_not be_nil
   end
 end
+
+describe ScheduleReloadPlanner do
+  it "plans keep, replace, defer, and removed-running retirement without mutating state" do
+    schedule = Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml")
+
+    unchanged = TaskState.new(
+      task: load_task("same", "every: 1s\ncommands:\n  - /bin/true\n"),
+      schedule: schedule
+    )
+    changed_running = TaskState.new(
+      task: load_task("changed", "every: 1s\ncommands:\n  - /bin/true\n"),
+      schedule: schedule
+    )
+    removed_running = TaskState.new(
+      task: load_task("removed", "every: 1s\ncommands:\n  - /bin/true\n"),
+      schedule: schedule
+    )
+
+    changed_running.started(Time.local)
+    removed_running.started(Time.local)
+
+    incoming = [
+      load_task("same", "every: 1s\ncommands:\n  - /bin/true\n"),
+      load_task("changed", "every: 2s\ncommands:\n  - /bin/true\n"),
+      load_task("fresh", "every: 1s\ncommands:\n  - /bin/true\n"),
+    ]
+
+    plan = ScheduleReloadPlanner.new([unchanged, changed_running, removed_running], incoming).plan
+
+    same_entry = plan.entries.find! { |entry| entry.task.name == "same" }
+    same_entry.keep_current.should be_true
+    same_entry.current.should eq(unchanged)
+
+    changed_entry = plan.entries.find! { |entry| entry.task.name == "changed" }
+    changed_entry.retire_current.should be_true
+    plan.deferred_tasks["changed"].name.should eq("changed")
+
+    fresh_entry = plan.entries.find! { |entry| entry.task.name == "fresh" }
+    fresh_entry.current.should be_nil
+    fresh_entry.preserve_state.should be_false
+
+    plan.retiring_removed.should eq([removed_running])
+    changed_running.retiring.should be_false
+    removed_running.retiring.should be_false
+  end
+end

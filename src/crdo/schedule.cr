@@ -97,46 +97,31 @@ class Schedule
       return
     end
 
-    existing = Hash(String, TaskState).new
-    @schedule.each do |task_state|
-      existing[task_state.task.name] = task_state unless task_state.retiring
-    end
-
+    plan = ScheduleReloadPlanner.new(@schedule, ct.tasks).plan
     retained = [] of TaskState
-    deferred = Hash(String, Task).new
-    incoming_names = Set(String).new
-
-    ct.tasks.each do |task|
-      incoming_names << task.name
-      current = existing[task.name]?
-      if current && current.task.signature == task.signature
-        current.keep!
-        retained << current
-        existing.delete(task.name)
-      elsif current && current.running?
-        current.retire!
-        retained << current
-        deferred[task.name] = task
-        existing.delete(task.name)
+    plan.entries.each do |entry|
+      if entry.keep_current
+        entry.current.not_nil!.keep!
+        retained << entry.current.not_nil!
+      elsif entry.retire_current
+        entry.current.not_nil!.retire!
+        retained << entry.current.not_nil!
       else
-        next_state = TaskState.new(task: task, schedule: self)
-        if current
-          next_state.apply_snapshot(current.state_snapshot)
-          existing.delete(task.name)
+        next_state = TaskState.new(task: entry.task, schedule: self)
+        if entry.preserve_state
+          next_state.apply_snapshot(entry.current.not_nil!.state_snapshot)
         end
         retained << next_state
       end
     end
 
-    @schedule.each do |task_state|
-      next unless task_state.running?
-      next if incoming_names.includes?(task_state.task.name)
+    plan.retiring_removed.each do |task_state|
       task_state.retire!
       retained << task_state unless retained.includes?(task_state)
     end
 
     @schedule = retained.uniq
-    @deferred_tasks = deferred
+    @deferred_tasks = plan.deferred_tasks
     @schedule.sort_by! { |i| (i.task.group == "$exclusive" ? 0 : 1) }
     clear_dependency_state
   end
