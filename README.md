@@ -15,7 +15,7 @@ shards build
 Run specs with:
 
 ```
-crystal spec -Dcrdo_spec
+crystal spec
 ```
 
 ## Controls
@@ -42,7 +42,7 @@ and saved state would cause a causal link between (possibly) changed dependent v
 * add when_run_if_late to allow running a task if it has not occured within the last instance specified in when
 * on hup or ^c, allow killing running tasks after a configurable timeout
 * Ensure that a task does not run more than once in an assigned time period (other than retry-after-error)
-* specs
+* integration spec around scheduler wait behavior / timeout sleeping
 * time zones (Time.local+x.days and Time.local.shift(days: x) give different results, the ladder of these ending up in a never-ending loop)
 * delayed randomized start
 * time window (instead of the current `when` key)
