@@ -8,6 +8,17 @@ alias TaskWaitState = NamedTuple(
   text: String,
   time: Time::Span)
 
+record CliOptions,
+  test : Bool,
+  immediate : Bool,
+  crontab : String,
+  filter : Set(String)
+
+record TaskStateSnapshot,
+  last_start : Time?,
+  last_stop : Time?,
+  last_status : Int32
+
 enum RunState
   Normal
   Reload
@@ -25,34 +36,36 @@ end
 
 struct TimeMatcher
   @month : Int32? = nil
-  @day : Int32? = nil
+  @month_day : Int32? = nil
+  @weekday : Int32? = nil
   @hour : Int32? = nil
   @minute : Int32? = nil
 
-  def initialize(@month, @day, @hour, @minute)
-    if @minute == nil && @hour == nil && @day == nil && @month == nil
+  def initialize(@month, @month_day, @weekday, @hour, @minute)
+    if @minute == nil && @hour == nil && @month_day == nil && @weekday == nil && @month == nil
       raise Exception.new("invalid TimeMatcher")
     end
   end
 
-  # has enough time elapsed since t1 for t2 to be a valid run time?
-  def enough_after(t1, t2)
-    (t2 - get_interval) > t1
+  def signature
+    {
+      month: @month,
+      month_day: @month_day,
+      weekday: @weekday,
+      hour: @hour,
+      minute: @minute,
+    }.to_json
   end
 
   def get_interval
-    interval = case
-               when @minute
-                 1.minutes
-               when @hour
-                 1.hours
-               when @day
-                 1.days
-               when @month
-                 1.months
-               else
-                 raise Exception.new("invalid time matcher")
-               end
+    case
+    when @minute
+      1.minutes
+    when @hour
+      1.hours
+    else
+      1.days
+    end
   end
 
   def truncate(t)
@@ -61,29 +74,22 @@ struct TimeMatcher
       t.at_beginning_of_minute
     when @hour
       t.at_beginning_of_hour
-    when @day
-      t.at_beginning_of_day
-    when @month
-      t.at_beginning_of_month
     else
-      t
+      t.at_beginning_of_day
     end
   end # def
 
+  def current_slot_start?(t)
+    return nil unless match(t)
+    truncate(t)
+  end
+
   def find_next(t)
     interval = get_interval
-    # add interval to t because we don't want to match on the current minute
     t += interval
     while !match(t)
       t += interval
     end
-    # bring t to the beginning of the interval
-    # e.g. 5:30, when searched for starting at 5:28:29 would go
-    # - 5:28:29,
-    # plus one minute not to match 5:28,
-    # + 1 minute (during the above while loop),
-    # which would get you to 5:30:29,
-    # and then truncate would get you back to 5:30:00
     truncate(t)
   end
 
@@ -95,7 +101,10 @@ struct TimeMatcher
     if @hour && t.hour != @hour.not_nil!
       ret = false
     end
-    if @day && t.day != @day.not_nil!
+    if @month_day && t.day != @month_day.not_nil!
+      ret = false
+    end
+    if @weekday && t.day_of_week.to_i != @weekday.not_nil!
       ret = false
     end
     if @month && t.month != @month.not_nil!
@@ -127,36 +136,100 @@ def format_time_span(t)
   "#{((t.days*24) + t.hours).to_s.rjust(2,'0')}:#{(t.minutes).to_s.rjust(2,'0')}:#{t.seconds.to_s.rjust(2,'0')}".gsub(/^00?:/, "")
 end
 
+def yaml_string_array(value : YAML::Any)
+  if value.raw.is_a?(Array)
+    value.as_a.map(&.as_s)
+  else
+    [value.as_s]
+  end
+end
+
+def parse_when_token_values(full_text, token, short_day_of_week_names, short_month_names)
+  parts = token.downcase.split(",")
+  if parts.all? { |part| short_day_of_week_names.includes?(part) }
+    return {
+      "weekday",
+      parts.map { |part| short_day_of_week_names.index!(part) + 1 },
+    }
+  end
+  if parts.all? { |part| short_month_names.includes?(part) }
+    return {
+      "month",
+      parts.map { |part| short_month_names.index!(part) + 1 },
+    }
+  end
+  if parts.all? { |part| part.match(/^\d+:\d+$/) }
+    values = parts.map do |part|
+      hour, minute = part.split(":").map(&.to_i)
+      if !(0..23).includes?(hour) || !(0..59).includes?(minute)
+        raise Exception.new("invalid when #{full_text} token #{part} has invalid hour or minute")
+      end
+      {hour, minute}
+    end
+    return {"time", values}
+  end
+  if parts.all? { |part| part.match(/^\d+$/) }
+    values = parts.map(&.to_i)
+    values.each do |day|
+      if !(1..31).includes?(day)
+        raise Exception.new("invalid when #{full_text} token #{day} is not a valid month day")
+      end
+    end
+    return {"month_day", values}
+  end
+  raise Exception.new("invalid when #{full_text} token #{token} mixes incompatible values")
+end
+
 def parse_when(txt)
   short_day_of_week_names = Time::DayOfWeek.names.map { |i| i.downcase[0..2] }
   short_month_names = %w(jan feb mar apr may jun jul aug sep oct nov dec)
-  has_month = false
-  has_day_of_week = false
-  words = txt.split(" ")
-  month = nil
-  day = nil
-  hour = nil
-  minute = nil
-  words.each do |w|
-    if short_day_of_week_names.includes?(w)
-      if has_day_of_week
-        raise Exception.new("invalid when #{txt} token #{w} is duplicate instance of weekday")
+  words = txt.split(/\s+/).reject(&.empty?)
+  raise Exception.new("invalid when #{txt}") if words.empty?
+
+  months = [] of Int32
+  month_days = [] of Int32
+  weekdays = [] of Int32
+  times = [] of Tuple(Int32?, Int32?)
+
+  words.each do |word|
+    token_type, values = parse_when_token_values(txt, word, short_day_of_week_names, short_month_names)
+    case token_type
+    when "month"
+      values.as(Array(Int32)).each { |value| months << value unless months.includes?(value) }
+    when "month_day"
+      values.as(Array(Int32)).each { |value| month_days << value unless month_days.includes?(value) }
+    when "weekday"
+      values.as(Array(Int32)).each { |value| weekdays << value unless weekdays.includes?(value) }
+    when "time"
+      values.as(Array(Tuple(Int32, Int32))).each do |value|
+        times << {value[0].as(Int32?), value[1].as(Int32?)} unless times.includes?({value[0].as(Int32?), value[1].as(Int32?)})
       end
-      day_of_week = short_day_of_week_names.index!(w) + 1
-      has_day_of_week = true
-    elsif short_month_names.includes?(w)
-      if has_month
-        raise Exception.new("invalid when #{txt} token #{w} is duplicate instance of month")
-      end
-      month = short_month_names.index!(w) + 1
-      has_month = true
-    elsif w.match(/^[0-9]+:[0-9]+$/)
-      hour, minute = w.split(":").map &.to_i
     else
-      raise Exception.new("invalid when #{txt} token #{w} is not month|weekday|hour:minute")
+      raise Exception.new("invalid when #{txt} token #{word}")
     end
-  end # each
-  TimeMatcher.new(month: month, day: day, hour: hour, minute: minute)
+  end
+
+  times = [{nil, nil}] if times.empty?
+  months_or_nil = months.empty? ? [nil] of Int32? : months.map(&.as(Int32?))
+  month_days_or_nil = month_days.empty? ? [nil] of Int32? : month_days.map(&.as(Int32?))
+  weekdays_or_nil = weekdays.empty? ? [nil] of Int32? : weekdays.map(&.as(Int32?))
+
+  matchers = [] of TimeMatcher
+  months_or_nil.each do |month|
+    month_days_or_nil.each do |month_day|
+      weekdays_or_nil.each do |weekday|
+        times.each do |time|
+          matchers << TimeMatcher.new(
+            month: month,
+            month_day: month_day,
+            weekday: weekday,
+            hour: time[0],
+            minute: time[1])
+        end
+      end
+    end
+  end
+  matchers
 end
 
 def parse_time_span(txt)
@@ -199,7 +272,7 @@ class GlobalConfig
     data.as_h.each do |k, v|
       case k.as_s
       when "include"
-        @include_paths.concat(v.as_a.map &.as_s)
+        @include_paths.concat(yaml_string_array(v))
       when "autosave"
         @autosave = v.as_i.seconds
       when "print_report"
@@ -232,19 +305,40 @@ class Task
   @error_body : String? = nil
   @error_command : String? = nil
   @name : String
-  @when : TimeMatcher? = nil
+  @when = [] of TimeMatcher
   @every : Time::Span? = nil
   @group : String? = nil
   @parent : String? = nil
   @global : GlobalConfig
   @disabled = false
   @use_stop_time = false
-  getter name, every, group, parent, use_stop_time, commands, global, disabled, error_body, error_command
+  getter name, every, group, parent, use_stop_time, commands, global, disabled, error_body, error_command, vars
 
-  # we need this as a def
-  # because `when` in a getter macro raises a syntax error
-  def when
+  def when_specs
     @when
+  end
+
+  def signature
+    {
+      name: @name,
+      commands: @commands,
+      vars: @vars.to_a.sort_by(&.[0]),
+      error_body: @error_body,
+      error_command: @error_command,
+      when: @when.map(&.signature).sort,
+      every_seconds: @every.try(&.total_seconds),
+      group: @group,
+      parent: @parent,
+      disabled: @disabled,
+      use_stop_time: @use_stop_time,
+      global: {
+        workdir: @global.workdir,
+        mail: @global.mail,
+        ignore_overtime: @global.ignore_overtime,
+        error: @global.error,
+        test: @global.test,
+      },
+    }.to_json
   end
 
   def initialize(@name : String, data : YAML::Any, @global : GlobalConfig)
@@ -255,7 +349,9 @@ class Task
       when "use_stop_time"
         @use_stop_time = v.as_bool
       when "when"
-        @when = parse_when(v.as_s)
+        yaml_string_array(v).each do |value|
+          @when.concat(parse_when(value))
+        end
       when "error_body"
         @error_body = v.as_s
       when "error_command"
@@ -267,6 +363,9 @@ class Task
       when "disabled"
         @disabled = v.as_bool
       when "commands"
+        if !v.raw.is_a?(Array)
+          raise Exception.new("task #{name} commands must be an array")
+        end
         v.as_a.each do |c|
           @commands << c.as_s
         end # each command
@@ -280,7 +379,7 @@ class Task
     end   # each key
     flag = 0
     flag += 1 if @every
-    flag += 1 if @when
+    flag += 1 if @when.size > 0
     if flag == 0
       raise Exception.new("task #{name} must have either `every` or `when` key")
     end
@@ -292,6 +391,13 @@ class Task
     end # if
   end   # def
 
+  def shell_command?(c)
+    parts = Process.parse_arguments(c)
+    parts[0] == "/bin/sh" && parts[1]? == "-c"
+  rescue
+    false
+  end
+
   def hydrate_command(c)
     @vars.each do |k, v|
       c = c.gsub("$#{k}", v)
@@ -301,9 +407,20 @@ class Task
     parts
   end
 
+  def verify_command_vars(c : String, label : String)
+    return if shell_command?(c)
+    c.scan(/\$([A-Za-z_][A-Za-z0-9_]*)/) do |match|
+      var_name = match[1]
+      if !@vars.has_key?(var_name)
+        raise Exception.new("task #{@name}, #{label}, unknown var #{var_name}")
+      end
+    end
+  end
+
   def verify
     verify_commands
     if @error_command
+      verify_command_vars(@error_command.not_nil!, "error command")
       t = hydrate_command(@error_command.not_nil!)
       if !File::Info.executable?(t[0])
         raise Exception.new("task #{@name}, error command, no path #{t[0]}")
@@ -313,6 +430,7 @@ class Task
 
   def verify_commands
     @commands.each_with_index do |i, idx|
+      verify_command_vars(i, "command #{idx}")
       t = hydrate_command(i)
       if !File::Info.executable?(t[0])
         raise Exception.new("task #{@name}, command #{idx}, no path #{t[0]}")
@@ -382,6 +500,9 @@ class Crontab
       seen.clear
       while t
         seen << t.name
+        if t.parent && !by_name.has_key?(t.parent.not_nil!)
+          raise Exception.new("task #{task.name} depends on missing parent #{t.parent}")
+        end
         if t.parent && seen.includes?(t.parent.not_nil!)
           raise Exception.new("task #{task.name} has a cyclical dependency of #{t.parent}")
         end # if
@@ -415,10 +536,38 @@ class TaskState
   # making sure no values in parent_status are false.
   @parent_status = Hash(String, Bool).new
   @sp : Process? = nil
-  getter parent_status
+  @retiring = false
+  getter parent_status, task, retiring, last_start, last_stop, last_status
 
   def run_time
     Time.local - @current_start.not_nil!
+  end
+
+  def task=(task : Task)
+    @task = task
+  end
+
+  def retire!
+    @retiring = true
+  end
+
+  def keep!
+    @retiring = false
+  end
+
+  def state_snapshot
+    TaskStateSnapshot.new(
+      last_start: @last_start,
+      last_stop: @last_stop,
+      last_status: @last_status)
+  end
+
+  def apply_snapshot(snapshot : TaskStateSnapshot)
+    @last_start = snapshot.last_start
+    @last_stop = snapshot.last_stop
+    @last_status = snapshot.last_status
+    @parent_status.clear
+    @overtime_occured = false
   end
 
   def should_notify_overtime?
@@ -479,21 +628,13 @@ class TaskState
                  else
                    nil
                  end
-    @last_status = if t = data["last_status"]?.try(&.as_i?)
-                     t
-                   else
-                     nil
-                   end
+    @last_status = data["last_status"]?.try(&.as_i?) || -1
     @parent_status.clear
     @overtime_occured = false
   end
 
   def has_run_successfully_once_since?(ts : Time)
     success? && @last_start && @last_stop && @last_stop.not_nil! >= @last_start.not_nil! && @last_start.not_nil! >= ts
-  end
-
-  def task
-    @task
   end
 
   def running?
@@ -513,6 +654,20 @@ class TaskState
   def log_dn(ts)
     t = ts.to_s("%Y-%m-%d/%H-%M-%S")
     "#{@task.global.workdir}/cron_logs/#{@task.name}/#{t}"
+  end
+
+  def next_scheduled_time(now = Time.local)
+    if @task.when_specs.size > 0
+      return @task.when_specs.map { |matcher| matcher.find_next(now) }.min
+    end
+    return now unless @task.every
+    base = if @task.use_stop_time
+             @last_stop || @last_start
+           else
+             @last_start
+           end
+    return now unless base
+    base.not_nil! + @task.every.not_nil!
   end
 
   def stopped(status : Int32, last_command_index : Int32, stop_time : Time)
@@ -539,7 +694,7 @@ class TaskState
       if @task.error_command
         spawn do
           ec = @task.hydrate_command(@task.error_command.not_nil!)
-          `#{Process.quote(ec)}`
+          Process.run(command: ec[0], args: ec[1..-1], chdir: @task.global.workdir)
         end
         sleep 0.seconds
       end
@@ -638,6 +793,9 @@ class TaskState
   end
 
   def should_run? : TaskWaitState
+    if @retiring
+      return TaskWaitState.new(task: @task, reason: WaitReason::Disabled, text: "retiring", time: 0.seconds)
+    end
     # don't run a disabled task
     if @task.disabled
       return TaskWaitState.new(task: @task, reason: WaitReason::Disabled, text: @task.name, time: 0.seconds)
@@ -659,36 +817,31 @@ class TaskState
       return TaskWaitState.new(task: @task, reason: WaitReason::Serial, text: "$exclusive", time: 0.seconds)
     end
     # don't run a task if it has a prerequisit task and that task has not been completed
-    if @task.parent && @parent_status[@task.parent.not_nil!] == false
+    if @task.parent && !(@schedule.immediate && @schedule.filter.includes?(@task.name)) && @parent_status[@task.parent.not_nil!] == false
       return TaskWaitState.new(task: @task, reason: WaitReason::Depend, text: @task.parent.not_nil!, time: 0.seconds)
     end
-    if @task.when
-      if !@task.when.not_nil!.match(Time.local)
-        return TaskWaitState.new(task: @task, reason: WaitReason::Wait, text: "", time: @task.when.not_nil!.find_next(Time.local) - Time.local)
+    if @task.when_specs.size > 0
+      now = Time.local
+      if @task.when_specs.any? { |matcher| (slot = matcher.current_slot_start?(now)) && (!@last_start || @last_start.not_nil! < slot.not_nil!) }
+        return TaskWaitState.new(task: @task, reason: WaitReason::None, text: "", time: 0.seconds)
       end
-      if @last_start && !@task.when.not_nil!.enough_after(@last_start.not_nil!, Time.local)
-        return TaskWaitState.new(task: @task, reason: WaitReason::Wait, text: "", time: @task.when.not_nil!.find_next(Time.local) - Time.local)
-      end
-      return TaskWaitState.new(task: @task, reason: WaitReason::None, text: "", time: 0.seconds)
+      next_time = @task.when_specs.map { |matcher| matcher.find_next(now) }.min
+      return TaskWaitState.new(task: @task, reason: WaitReason::Wait, text: "", time: next_time - now)
     end
-    # run every x sec|min|hour|day
     if @task.every
-      # if task hasn't been run before, then run
       if !@last_start
         return TaskWaitState.new(task: @task, reason: WaitReason::None, text: "", time: 0.seconds)
       end
-      # if enough time has passed between the last time we started the process and the current time, run it
       elapsed = if @task.use_stop_time
-                  Time.local - @last_stop.not_nil!
+                  Time.local - (@last_stop || @last_start).not_nil!
                 else
                   Time.local - @last_start.not_nil!
                 end
       if elapsed < @task.every.not_nil!
-        # need to wait
         return TaskWaitState.new(task: @task, reason: WaitReason::Wait, text: "", time: (@task.every.not_nil! - elapsed))
       end
       return TaskWaitState.new(task: @task, reason: WaitReason::None, text: "", time: 0.seconds)
-    end # if every
+    end
     raise Exception.new("task does not have every or when")
   end # def
 
@@ -704,8 +857,10 @@ class Schedule
   property :test
   @print_report = true
   @reasons = [] of TaskWaitState
+  @deferred_tasks = Hash(String, Task).new
 
   delegate :select, to: @schedule
+  getter immediate, filter
 
   def initialize(@test, @immediate, @filter, @crontab)
   end
@@ -753,25 +908,33 @@ class Schedule
     end
   end # def
 
-  # you _must call clear_dependency_state
-  # after loading state
-  def load_task_state?
+  def load_state_data
     path = @crontab + ".state"
-    err = false
     src = Path[path].expand(home: true)
-    if !File.exists?(src)
-      return false
-    end
+    return nil unless File.exists?(src)
     state = JSON.parse(File.read(src))
-    state.as_a.each do |ts|
+    if state.raw.is_a?(Array)
+      state.as_a
+    else
+      version = state["version"]?.try(&.as_i?) || 1
+      raise Exception.new("unsupported state version #{version}") unless version == 2
+      state["tasks"].as_a
+    end
+  end
+
+  # you _must call clear_dependency_state after loading state
+  def load_task_state?
+    err = false
+    state_data = load_state_data
+    return false unless state_data
+    state_data.each do |ts|
       task_state = self[ts["name"].as_s]?
       if !task_state
         err = true
         next
       end
-      task_state = task_state.not_nil!
-      task_state.set_state ts
-    end # each
+      task_state.not_nil!.set_state(ts)
+    end
     err == false
   end # def
 
@@ -780,26 +943,92 @@ class Schedule
     dest = Path[path].expand(home: true).to_s
     File.write(
       dest + ".tmp",
-      @schedule.to_json)
+      {
+        version: 2,
+        tasks: @schedule,
+      }.to_json)
     File.rename(
       dest + ".tmp",
       dest)
   end
 
+  def activate_deferred_task(name, snapshot)
+    next_task = @deferred_tasks.delete(name)
+    return unless next_task
+    next_state = TaskState.new(task: next_task, schedule: self)
+    next_state.apply_snapshot(snapshot)
+    @schedule << next_state
+  end
+
+  def next_task_wait(state : TaskState)
+    wait_state = state.should_run?
+    if wait_state[:reason].wait?
+      next_time = Time.local + wait_state[:time]
+      "#{format_time_span(wait_state[:time])} (#{next_time})"
+    else
+      next_time = state.next_scheduled_time
+      "#{format_time_span(next_time - Time.local)} (#{next_time})"
+    end
+  end
+
   # handle this like a fresh start with saved state
-  # read crontab and saved state file,
-  # and apply saved state to all existing tasks
-  def load
+  def load(initial = false)
     ct = Crontab.new @crontab
     ct.verify
     @autosave = ct.global.autosave
     @print_report = ct.global.print_report
-    @schedule.clear
-    add_tasks ct.tasks
-    @schedule.sort_by! {|i| (i.task.group=="$exclusive" ? 0 : 1) }
-    if !@immediate
-      load_task_state?
+    if initial
+      @schedule.clear
+      add_tasks ct.tasks
+      @schedule.sort_by! {|i| (i.task.group=="$exclusive" ? 0 : 1) }
+      if !@immediate
+        load_task_state?
+      end
+      clear_dependency_state
+      return
     end
+
+    existing = Hash(String, TaskState).new
+    @schedule.each do |task_state|
+      existing[task_state.task.name] = task_state unless task_state.retiring
+    end
+
+    retained = [] of TaskState
+    deferred = Hash(String, Task).new
+    incoming_names = Set(String).new
+
+    ct.tasks.each do |task|
+      incoming_names << task.name
+      current = existing[task.name]?
+      if current && current.task.signature == task.signature
+        current.keep!
+        retained << current
+        existing.delete(task.name)
+      elsif current && current.running?
+        current.retire!
+        retained << current
+        deferred[task.name] = task
+        existing.delete(task.name)
+      else
+        next_state = TaskState.new(task: task, schedule: self)
+        if current
+          next_state.apply_snapshot(current.state_snapshot)
+          existing.delete(task.name)
+        end
+        retained << next_state
+      end
+    end
+
+    @schedule.each do |task_state|
+      next unless task_state.running?
+      next if incoming_names.includes?(task_state.task.name)
+      task_state.retire!
+      retained << task_state unless retained.includes?(task_state)
+    end
+
+    @schedule = retained.uniq
+    @deferred_tasks = deferred
+    @schedule.sort_by! {|i| (i.task.group=="$exclusive" ? 0 : 1) }
     clear_dependency_state
   end
 
@@ -822,8 +1051,7 @@ class Schedule
   def print_report
     puts "as of #{Time.local}"
     @reasons.each do |r|
-marker=""
-      puts "#{r[:task].name}, #{r[:reason].none? || r[:reason].already_running? ? "running" : r[:reason].to_s}: #{r[:text]} #{marker}#{format_time_span(r[:time])}"
+      puts "#{r[:task].name}, #{r[:reason].none? || r[:reason].already_running? ? "running" : r[:reason].to_s}: #{r[:text]} #{format_time_span(r[:time])}"
     end
     puts "-----"
   end
@@ -837,7 +1065,7 @@ marker=""
     run_state = RunState::Normal
     shortest_timeout = 1.hour
     do_filter = @filter.size > 0
-    load
+    load(true)
     if @autosave > 0.seconds
       spawn do
         autosave run_state_channel, @autosave
@@ -850,20 +1078,11 @@ marker=""
         drain_state = DrainState::Drained
       end
       if drain_state.drained?
-        if run_state.exit? || run_state.reload?
+        if run_state.exit?
           if !@immediate
             save_state
           end # if not immediate
-        end   # if exit or reload
-        if run_state.reload?
-          # read crontab
-          # update changed tasks
-          # add new tasks
-          load
-          run_state = RunState::Normal
-          drain_state = DrainState::None
-          next
-        end # if reloading or saving
+        end
         if run_state.exit?
           exit
         end
@@ -894,9 +1113,6 @@ marker=""
           ({i[:reason], i[:time], i[:task].name})
         end
         @reasons = reasons
-        if @print_report
-          print_report
-        end # print tasks
       end   # if normal and not draining
       # wait on events from any task
       # puts timeout_reasons
@@ -908,6 +1124,10 @@ marker=""
         end
         if t.print_running_report?
           print_running_report
+          next
+        end
+        if t.reload?
+          load
           next
         end
         if !run_state.normal?
@@ -945,14 +1165,28 @@ marker=""
 
   def started(task, start_time)
     task.started start_time
+    puts "start #{task.task.name} at #{start_time}"
   end
 
   def stopped(x)
-    x[0].stopped(status: x[1], last_command_index: x[2], stop_time: x[3])
+    task_state = x[0]
+    task_state.stopped(status: x[1], last_command_index: x[2], stop_time: x[3])
+    duration = if task_state.last_start && task_state.last_stop
+                 task_state.last_stop.not_nil! - task_state.last_start.not_nil!
+               else
+                 0.seconds
+               end
+    puts "stop #{task_state.task.name} rc=#{x[1]} duration=#{format_time_span(duration)} next=#{next_task_wait(task_state)}"
+    if task_state.retiring && !task_state.running?
+      @schedule.delete(task_state)
+      activate_deferred_task(task_state.task.name, task_state.state_snapshot)
+    elsif @deferred_tasks.has_key?(task_state.task.name)
+      activate_deferred_task(task_state.task.name, task_state.state_snapshot)
+    end
   end
 end # class
 
-def main
+def parse_cli(args = ARGV)
   test = false
   immediate = false
   ct = "~/.crdo.yml"
@@ -985,7 +1219,12 @@ def main
       filter = args.to_set
     end
   end
-  parser.parse
+  parser.parse(args)
+  CliOptions.new(test: test, immediate: immediate, crontab: ct, filter: filter)
+end
+
+def main(args = ARGV)
+  options = parse_cli(args)
   run_state_chan = Channel(RunState).new
   Signal::HUP.trap do
     run_state_chan.send RunState::Reload
@@ -999,9 +1238,11 @@ def main
   Signal::USR2.trap do
     run_state_chan.send RunState::PrintRunningReport
   end
-  t = Schedule.new test: test, immediate: immediate, filter: filter, crontab: ct
-  puts "crdo running with pid #{Process.pid},#{immediate ? " immediate" : ""} #{test ? "test" : "normal"} mode"
+  t = Schedule.new test: options.test, immediate: options.immediate, filter: options.filter, crontab: options.crontab
+  puts "crdo running with pid #{Process.pid},#{options.immediate ? " immediate" : ""} #{options.test ? "test" : "normal"} mode"
   t.loop run_state_chan
 end
 
+{% unless flag?(:crdo_spec) %}
 main
+{% end %}

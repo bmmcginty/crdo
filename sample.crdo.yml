@@ -13,19 +13,6 @@ global:
   # boolean
   # if set to false, do not print a report each time any task changes state
   print_report: true
-  # string
-  # formats report output
-  # %w: relative time until task will run next
-  # %W: absolute time when task will run next
-  # %n: task name
-  # %s: task status
-  # %T: time of report generation
-  # first line of report
-  report_header: as of %T
-  # line(s) printed for each task
-  report_body: '%n, %s: %w (%W)
-  # last line of the report
-  report_footer: '-----'
   # boolean
   # if set to true, tasks will be prepended with the echo command.
   # This allows the operator to verify the commands that will be run, including variable substitution.

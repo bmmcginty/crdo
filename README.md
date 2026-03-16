@@ -12,13 +12,21 @@ shards build
 ./bin/crdo
 ```
 
+Run specs with:
+
+```
+crystal spec -Dcrdo_spec
+```
+
 ## Controls
 
 You can send signals to the running crdo instance:
 - HUP reloads the config (and adds/removes tasks as needed)
 - USR1 prints a state report for all tasks
 - USR2 lists running tasks and the amount of time each has been running
-Before the config is reloaded, all running jobs are allowed to complete, and new jobs are not queued.
+On reload, unchanged running tasks are kept in place. Deleted or changed running tasks are allowed to complete before their replacements are activated.
+
+Normal runtime output is start/stop lines per task. Full task reports are printed on USR1.
 
 ## Notes
 

@@ -4,7 +4,7 @@ job6e:
   # The below command will launch a new tmux window in the main session,
   # if one does not already exist,
   # to e.g. allow handling said error.
-  error_command: "tmux new-window -d -S -P -t main: -n 'job6e-window' 'echo interactive job6e error window'"
+  every: 1d
+  error_command: "/usr/bin/tmux new-window -d -S -P -t main: -n 'job6e-window' 'echo interactive job6e error window'"
   commands:
     - /bin/false
-
