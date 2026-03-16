@@ -142,13 +142,10 @@ class Schedule
   end
 
   def loop(run_state_channel : Channel(RunState)? = nil)
-    loop_start_time = Time.local
     reasons = [] of TaskWaitState
     chan = Channel(Time).new
     events = Channel(Tuple(TaskState, Int32, Int32, Time)).new
-    drain_state = DrainState::None
-    run_state = RunState::Normal
-    shortest_timeout = 1.hour
+    controller = ScheduleLoopController.new
     do_filter = @filter.size > 0
     load(true)
     if @autosave > 0.seconds
@@ -158,20 +155,14 @@ class Schedule
       sleep(0.seconds)
     end
     while 1
-      if drain_state.draining? && @schedule.none? { |i| i.running? }
-        drain_state = DrainState::Drained
+      controller.note_running_count(running.size)
+      if controller.should_save_before_exit?(@immediate)
+        save_state
       end
-      if drain_state.drained?
-        if run_state.exit?
-          if !@immediate
-            save_state
-          end
-        end
-        if run_state.exit?
-          exit
-        end
+      if controller.should_exit?
+        exit
       end
-      if run_state.normal? && drain_state.none?
+      if controller.scheduling_open?
         reasons.clear
         @schedule.each do |i|
           if do_filter && !@filter.includes?(i.task.name)
@@ -191,46 +182,33 @@ class Schedule
           end
           reasons << reason
         end
-        timeouts = reasons.select { |i| i[:reason].wait? }.map { |i| i[:time] }
-        shortest_timeout = timeouts.size > 0 ? timeouts.min : 1.hour
-        reasons.sort_by! do |i|
-          ({i[:reason], i[:time], i[:task].name})
-        end
-        @reasons = reasons
+        controller.update_reasons(reasons)
+        @reasons = controller.reasons
       end
       select
       when t = run_state_channel.receive
-        if t.print_report?
+        case controller.handle_run_state_request(t)
+        when .print_report?
           print_report
-          next
-        end
-        if t.print_running_report?
+        when .print_running_report?
           print_running_report
-          next
-        end
-        if t.reload?
+        when .reload?
           load
-          next
-        end
-        if !run_state.normal?
-          @reporter.invalid_transition(t, run_state, drain_state)
-          next
-        end
-        if t.save?
+        when .invalid?
+          @reporter.invalid_transition(t, controller.run_state, controller.drain_state)
+        when .save?
           save_state
-          next
+        when .transition?
+          @reporter.run_state_changed(controller.run_state)
         end
-        run_state = t
-        drain_state = DrainState::Draining
-        @reporter.run_state_changed(run_state)
         next
       when x = events.receive
         stopped(x)
-        if @immediate && all_tasks_have_run_once_since?(loop_start_time)
+        if controller.immediate_complete?(@immediate, all_tasks_have_run_once_since?(controller.loop_start_time))
           break
         end
         next
-      when timeout(shortest_timeout)
+      when timeout(controller.shortest_timeout)
         next
       end
     end

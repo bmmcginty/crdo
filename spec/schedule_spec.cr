@@ -175,3 +175,45 @@ describe ScheduleReloadPlanner do
     removed_running.retiring.should be_false
   end
 end
+
+describe ScheduleLoopController do
+  it "tracks run-state transitions, invalid requests, and exit conditions" do
+    controller = ScheduleLoopController.new
+
+    controller.handle_run_state_request(RunState::Exit).transition?.should be_true
+    controller.run_state.exit?.should be_true
+    controller.drain_state.draining?.should be_true
+
+    controller.handle_run_state_request(RunState::Save).invalid?.should be_true
+    controller.note_running_count(0)
+    controller.should_save_before_exit?(false).should be_true
+    controller.should_exit?.should be_true
+  end
+
+  it "sorts wait reasons and tracks the shortest timeout" do
+    controller = ScheduleLoopController.new
+    a = TaskWaitState.new(
+      task: load_task("a", "every: 1s\ncommands:\n  - /bin/true\n"),
+      reason: WaitReason::Wait,
+      text: "",
+      time: 5.seconds
+    )
+    b = TaskWaitState.new(
+      task: load_task("b", "every: 1s\ncommands:\n  - /bin/true\n"),
+      reason: WaitReason::AlreadyRunning,
+      text: "",
+      time: 1.seconds
+    )
+    c = TaskWaitState.new(
+      task: load_task("c", "every: 1s\ncommands:\n  - /bin/true\n"),
+      reason: WaitReason::Wait,
+      text: "",
+      time: 2.seconds
+    )
+
+    controller.update_reasons([a, b, c])
+
+    controller.shortest_timeout.should eq(2.seconds)
+    controller.reasons.map { |reason| reason[:task].name }.should eq(["b", "c", "a"])
+  end
+end
