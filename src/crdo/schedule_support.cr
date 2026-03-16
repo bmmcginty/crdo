@@ -27,3 +27,14 @@ enum ScheduleEventAction
   Invalid
   BreakLoop
 end
+
+enum SchedulePassAction
+  StartTask
+  NotifyOvertime
+  None
+end
+
+record SchedulePassDecision,
+  task_state : TaskState,
+  wait_state : TaskWaitState,
+  action : SchedulePassAction

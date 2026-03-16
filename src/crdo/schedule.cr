@@ -15,6 +15,7 @@ class Schedule
   @current_now : Time? = nil
   @state_store : ScheduleStateStore
   @reporter : ScheduleReporter
+  @pass_planner : SchedulePassPlanner
 
   delegate :select, to: @schedule
   getter immediate, filter, clock, previous_now, current_now
@@ -22,6 +23,7 @@ class Schedule
   def initialize(@test, @immediate, @filter, @crontab, @clock : Clock = SystemClock.new, @loop_waiter : LoopWaiter = SelectLoopWaiter.new)
     @state_store = ScheduleStateStore.new(@crontab)
     @reporter = ScheduleReporter.new(@clock)
+    @pass_planner = SchedulePassPlanner.new
   end
 
   def [](name : String)
@@ -146,24 +148,22 @@ class Schedule
     @reporter.print_report(@reasons)
   end
 
-  private def apply_scheduling_pass(controller : ScheduleLoopController, do_filter : Bool, chan : Channel(Time), events : Channel(TaskEvent))
+  private def apply_scheduling_pass(controller : ScheduleLoopController, chan : Channel(Time), events : Channel(TaskEvent))
     @current_now = @clock.now
     reasons = [] of TaskWaitState
-    @schedule.each do |i|
-      if do_filter && !@filter.includes?(i.task.name)
-        next
-      end
-      reason = i.should_run?
-      if reason[:reason].none?
+    @pass_planner.plan(@schedule, @filter).each do |decision|
+      task_state = decision.task_state
+      reason = decision.wait_state
+      case decision.action
+      when .start_task?
         spawn do
-          i.run(chan, events)
+          task_state.run(chan, events)
         end
         sleep(0.seconds)
-        started(i, chan.receive)
-      else
-        if i.should_notify_overtime?
-          notify_overtime(i)
-        end
+        started(task_state, chan.receive)
+      when .notify_overtime?
+        notify_overtime(task_state)
+      when .none?
       end
       reasons << reason
     end
@@ -212,7 +212,6 @@ class Schedule
     chan = Channel(Time).new
     events = Channel(Tuple(TaskState, Int32, Int32, Time)).new
     controller = ScheduleLoopController.new(@clock)
-    do_filter = @filter.size > 0
     load(true)
     if @autosave > 0.seconds
       spawn do
@@ -228,7 +227,7 @@ class Schedule
       when .exit?
         exit
       when .schedule_pass?
-        apply_scheduling_pass(controller, do_filter, chan, events)
+        apply_scheduling_pass(controller, chan, events)
       when .wait?
       end
       event = @loop_waiter.wait(run_state_channel, events, controller.shortest_timeout)
