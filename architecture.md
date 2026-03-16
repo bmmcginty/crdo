@@ -32,13 +32,14 @@ Startup sequence:
 
 1. `Schedule#load(true)` builds a `Crontab`, verifies it, creates `TaskState` objects, and optionally restores persisted state.
 2. `Schedule#loop` creates channels for run-state requests and task completion events.
-3. Each loop iteration asks `ScheduleLoopController` whether scheduling is open, whether the process should drain, and how long the next timeout should be.
-4. If scheduling is open, each `TaskState` is asked `should_run?`.
-5. Eligible tasks are started in fibers. Ineligible tasks contribute wait reasons used for reports and timeout calculation.
+3. Each loop iteration asks `ScheduleLoopController#next_action` what the loop should do next: run a scheduling pass, wait, save-and-exit, or exit.
+4. If a scheduling pass is requested, `SchedulePassPlanner` turns each eligible `TaskState` into a `SchedulePassDecision`.
+5. `Schedule` applies those planned pass actions by starting tasks or sending overtime mail, then updates wait reasons and timeout data in `ScheduleLoopController`.
 6. The loop blocks in `LoopWaiter#wait` until one of three things happens:
    - a signal-driven run-state request arrives
    - a task finishes
    - the shortest computed timeout expires
+7. The resulting `ScheduleEvent` is handed back to `ScheduleLoopController`, which returns a higher-level `ScheduleEventAction` such as reload, report, save, transition, or break-loop.
 
 ## Config loading and validation
 
@@ -126,14 +127,16 @@ The small support record used by the evaluator lives in `[src/crdo/task_support.
 
 ## Reload and persisted state
 
-Reload and state logic is split out of `Schedule`:
+Reload, pass planning, and state logic are split out of `Schedule`:
 
 - `[src/crdo/schedule_state_store.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_state_store.cr)`:
   reads legacy and v2 state, writes v2 state atomically via temp file + rename
 - `[src/crdo/schedule_reload_planner.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_reload_planner.cr)`:
   computes which tasks are kept, retired, replaced, or deferred during reload
+- `[src/crdo/schedule_pass_planner.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_pass_planner.cr)`:
+  turns task runtime state into explicit scheduling-pass decisions
 - `[src/crdo/schedule_support.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_support.cr)`:
-  contains the plan record types and run-state action enum
+  contains the shared plan, loop-action, event-action, and pass-decision types
 
 Reload semantics:
 
@@ -164,6 +167,13 @@ Two explicit seams exist for testability:
 - `[src/crdo/loop_waiter.cr](/home/bmmcginty/git/crdo/src/crdo/loop_waiter.cr)` and `[src/crdo/select_loop_waiter.cr](/home/bmmcginty/git/crdo/src/crdo/select_loop_waiter.cr)`
 
 `Clock` lets specs inject a fake time source. `LoopWaiter` lets specs observe requested wait durations without relying on real `select` sleeps.
+
+The loop now also has two explicit decision seams:
+
+- `ScheduleLoopController`:
+  translates scheduler state plus incoming `ScheduleEvent`s into high-level loop actions
+- `SchedulePassPlanner`:
+  translates current `TaskState`s into a list of concrete scheduling-pass decisions
 
 ## How clock shifts are detected
 
@@ -219,11 +229,11 @@ This is how `crdo` distinguishes two different absolute instants that both appea
 Several small shared records and enums live outside the main classes:
 
 - `[src/crdo/types.cr](/home/bmmcginty/git/crdo/src/crdo/types.cr)`:
-  shared enums, snapshots, CLI options, and `WhenPolicy`
+  shared enums, snapshots, CLI options, `WhenPolicy`, and `ScheduleEvent`
 - `[src/crdo/task_support.cr](/home/bmmcginty/git/crdo/src/crdo/task_support.cr)`:
   `TaskRunContext`
 - `[src/crdo/schedule_support.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_support.cr)`:
-  reload-plan records and run-state action enum
+  reload-plan records plus scheduler loop/pass action types
 
 ## Testing structure
 
