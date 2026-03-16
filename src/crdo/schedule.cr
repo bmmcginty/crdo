@@ -18,7 +18,7 @@ class Schedule
   @pass_planner : SchedulePassPlanner
 
   delegate :select, to: @schedule
-  getter immediate, filter, clock, previous_now, current_now
+  getter immediate, filter, clock, previous_now, current_now, autosave
 
   def initialize(@test, @immediate, @filter, @crontab, @clock : Clock = SystemClock.new, @loop_waiter : LoopWaiter = SelectLoopWaiter.new)
     @state_store = ScheduleStateStore.new(@crontab)
@@ -148,7 +148,7 @@ class Schedule
     @reporter.print_report(@reasons)
   end
 
-  private def apply_scheduling_pass(controller : ScheduleLoopController, chan : Channel(Time), events : Channel(TaskEvent))
+  def run_scheduling_pass(controller : ScheduleLoopController, chan : Channel(Time), events : Channel(TaskEvent))
     @current_now = @clock.now
     reasons = [] of TaskWaitState
     @pass_planner.plan(@schedule, @filter).each do |decision|
@@ -172,7 +172,7 @@ class Schedule
     @previous_now = @current_now
   end
 
-  private def handle_schedule_event(event : ScheduleEvent, controller : ScheduleLoopController) : Bool
+  def process_schedule_event(event : ScheduleEvent, controller : ScheduleLoopController) : Bool
     if event.kind.task_completed?
       stopped(event.task_event.not_nil!)
     end
@@ -210,32 +210,7 @@ class Schedule
   end
 
   def loop(run_state_channel : Channel(RunState)? = nil)
-    chan = Channel(Time).new
-    events = Channel(Tuple(TaskState, Int32, Int32, Time)).new
-    controller = ScheduleLoopController.new(@clock)
-    load(true)
-    if @autosave > 0.seconds
-      spawn do
-        autosave(run_state_channel, @autosave)
-      end
-      sleep(0.seconds)
-    end
-    while 1
-      case controller.next_action(running.size, @immediate)
-      when .save_and_exit?
-        save_state
-        exit
-      when .exit?
-        exit
-      when .schedule_pass?
-        apply_scheduling_pass(controller, chan, events)
-      when .wait?
-      end
-      event = @loop_waiter.wait(run_state_channel, events, controller.shortest_timeout)
-      if handle_schedule_event(event, controller)
-        break
-      end
-    end
+    ScheduleLoopRunner.new(self, @clock, @loop_waiter).run(run_state_channel)
   end
 
   def notify_overtime(task)
