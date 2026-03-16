@@ -22,15 +22,39 @@ class ScheduleStateStore
     err = false
     state_data = load_state_data
     return false unless state_data
+    pending = [] of Tuple(TaskState, TaskStateSnapshot)
     state_data.each do |ts|
       task_state = schedule[ts["name"].as_s]?
       if !task_state
         err = true
         next
       end
-      task_state.not_nil!.set_state(ts)
+      pending << {task_state.not_nil!, snapshot_for(ts)}
+    end
+    return false if err
+    pending.each do |task_state, snapshot|
+      task_state.apply_snapshot(snapshot)
     end
     err == false
+  end
+
+  def snapshot_for(data : JSON::Any)
+    TaskStateSnapshot.new(
+      last_start: if t = data["last_start"]?.try(&.as_i64?)
+                    Time.unix(t).to_local
+                  elsif t = data["last_start_ms"]?.try(&.as_i64?)
+                    Time.unix_ms(t).to_local
+                  else
+                    nil
+                  end,
+      last_stop: if t = data["last_stop"]?.try(&.as_i64?)
+                   Time.unix(t).to_local
+                 elsif t = data["last_stop_ms"]?.try(&.as_i64?)
+                   Time.unix_ms(t).to_local
+                 else
+                   nil
+                 end,
+      last_status: data["last_status"]?.try(&.as_i?) || -1)
   end
 
   def save(schedule : Array(TaskState))

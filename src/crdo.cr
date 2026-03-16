@@ -1,5 +1,6 @@
 require "./src/crdo/types"
 require "./src/crdo/when_parser"
+require "./src/crdo/config_support"
 require "./src/crdo/config"
 require "./src/crdo/task"
 require "./src/crdo/task_support"

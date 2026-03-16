@@ -190,6 +190,39 @@ describe Schedule do
     reloaded["a"].last_status.should eq(0)
   end
 
+  it "does not partially apply state when any entry is invalid for this schedule" do
+    dir = unique_tmpdir("crdo-state-atomic")
+    path = write_schedule_config(
+      "#{dir}/root.yml",
+      "a:\n  every: 1d\n  commands:\n    - /bin/true\n"
+    )
+
+    File.write(
+      "#{path}.state",
+      [
+        {
+          name: "a",
+          last_start_ms: (Time.local - 2.minutes).to_utc.to_unix_ms,
+          last_stop_ms: (Time.local - 1.minute).to_utc.to_unix_ms,
+          last_status: 0,
+        },
+        {
+          name: "missing",
+          last_start_ms: Time.local.to_utc.to_unix_ms,
+          last_stop_ms: Time.local.to_utc.to_unix_ms,
+          last_status: 0,
+        },
+      ].to_json
+    )
+
+    schedule = Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: path)
+    schedule.load(true)
+
+    schedule["a"].last_status.should eq(-1)
+    schedule["a"].last_start.should be_nil
+    schedule["a"].last_stop.should be_nil
+  end
+
   it "keeps unchanged running tasks during reload and loads new unrelated tasks" do
     dir = unique_tmpdir("crdo-reload")
     path = write_schedule_config(
