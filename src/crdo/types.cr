@@ -19,6 +19,8 @@ record TaskStateSnapshot,
   last_stop : Time?,
   last_status : Int32
 
+alias TaskEvent = Tuple(TaskState, Int32, Int32, Time)
+
 enum RunState
   Normal
   Reload
@@ -43,6 +45,17 @@ enum WaitReason
   Exclusive
   Disabled
 end
+
+enum LoopWaitResultKind
+  RunState
+  TaskEvent
+  Timeout
+end
+
+record LoopWaitResult,
+  kind : LoopWaitResultKind,
+  run_state : RunState?,
+  task_event : TaskEvent?
 
 def format_time_span(t)
   "#{((t.days * 24) + t.hours).to_s.rjust(2, '0')}:#{t.minutes.to_s.rjust(2, '0')}:#{t.seconds.to_s.rjust(2, '0')}".gsub(/^00?:/, "")

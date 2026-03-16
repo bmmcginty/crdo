@@ -5,6 +5,7 @@ class Schedule
   @filter : Set(String)
   @crontab : String
   @clock : Clock
+  @loop_waiter : LoopWaiter
   @autosave : Time::Span = 0.seconds
   property :test
   @print_report = true
@@ -16,7 +17,7 @@ class Schedule
   delegate :select, to: @schedule
   getter immediate, filter, clock
 
-  def initialize(@test, @immediate, @filter, @crontab, @clock : Clock = SystemClock.new)
+  def initialize(@test, @immediate, @filter, @crontab, @clock : Clock = SystemClock.new, @loop_waiter : LoopWaiter = SelectLoopWaiter.new)
     @state_store = ScheduleStateStore.new(@crontab)
     @reporter = ScheduleReporter.new(@clock)
   end
@@ -128,9 +129,10 @@ class Schedule
   end
 
   def autosave(run_state_chan, wait_time = 600.seconds)
+    return unless run_state_chan
     while 1
       sleep(wait_time)
-      run_state_chan.send(RunState::Save)
+      run_state_chan.not_nil!.send(RunState::Save)
     end
   end
 
@@ -186,8 +188,10 @@ class Schedule
         controller.update_reasons(reasons)
         @reasons = controller.reasons
       end
-      select
-      when t = run_state_channel.receive
+      result = @loop_waiter.wait(run_state_channel, events, controller.shortest_timeout)
+      case result.kind
+      when .run_state?
+        t = result.run_state.not_nil!
         case controller.handle_run_state_request(t)
         when .print_report?
           print_report
@@ -203,13 +207,14 @@ class Schedule
           @reporter.run_state_changed(controller.run_state)
         end
         next
-      when x = events.receive
+      when .task_event?
+        x = result.task_event.not_nil!
         stopped(x)
         if controller.immediate_complete?(@immediate, all_tasks_have_run_once_since?(controller.loop_start_time))
           break
         end
         next
-      when timeout(controller.shortest_timeout)
+      when .timeout?
         next
       end
     end
