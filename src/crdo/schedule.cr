@@ -16,6 +16,7 @@ class Schedule
   @state_store : ScheduleStateStore
   @reporter : ScheduleReporter
   @pass_planner : SchedulePassPlanner
+  @task_lifecycle : ScheduleTaskLifecycle? = nil
 
   delegate :select, to: @schedule
   getter immediate, filter, clock, previous_now, current_now, autosave
@@ -24,6 +25,10 @@ class Schedule
     @state_store = ScheduleStateStore.new(@crontab)
     @reporter = ScheduleReporter.new(@clock)
     @pass_planner = SchedulePassPlanner.new
+  end
+
+  private def task_lifecycle : ScheduleTaskLifecycle
+    @task_lifecycle ||= ScheduleTaskLifecycle.new(self, @reporter)
   end
 
   def [](name : String)
@@ -81,6 +86,14 @@ class Schedule
     next_state = TaskState.new(task: next_task, schedule: self)
     next_state.apply_snapshot(snapshot)
     @schedule << next_state
+  end
+
+  def remove_task(task_state : TaskState)
+    @schedule.delete(task_state)
+  end
+
+  def deferred_task?(name : String)
+    @deferred_tasks.has_key?(name)
   end
 
   def next_task_wait(state : TaskState)
@@ -160,9 +173,9 @@ class Schedule
           task_state.run(chan, events)
         end
         sleep(0.seconds)
-        started(task_state, chan.receive)
+        task_lifecycle.started(task_state, chan.receive)
       when .notify_overtime?
-        notify_overtime(task_state)
+        task_lifecycle.notify_overtime(task_state)
       when .none?
       end
       reasons << reason
@@ -174,7 +187,7 @@ class Schedule
 
   def process_schedule_event(event : ScheduleEvent, controller : ScheduleLoopController) : Bool
     if event.kind.task_completed?
-      stopped(event.task_event.not_nil!)
+      task_lifecycle.stopped(event.task_event.not_nil!)
     end
     decision = controller.handle_event(
       event,
@@ -211,26 +224,5 @@ class Schedule
 
   def loop(run_state_channel : Channel(RunState)? = nil)
     ScheduleLoopRunner.new(self, @clock, @loop_waiter).run(run_state_channel)
-  end
-
-  def notify_overtime(task)
-    task.notify_overtime
-  end
-
-  def started(task, start_time)
-    task.started(start_time)
-    @reporter.started(task, start_time)
-  end
-
-  def stopped(x)
-    task_state = x[0]
-    task_state.stopped(status: x[1], last_command_index: x[2], stop_time: x[3])
-    @reporter.stopped(task_state, x[1], next_task_wait(task_state))
-    if task_state.retiring && !task_state.running?
-      @schedule.delete(task_state)
-      activate_deferred_task(task_state.task.name, task_state.state_snapshot)
-    elsif @deferred_tasks.has_key?(task_state.task.name)
-      activate_deferred_task(task_state.task.name, task_state.state_snapshot)
-    end
   end
 end

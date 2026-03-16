@@ -136,6 +136,8 @@ Reload, pass planning, and state logic are split out of `Schedule`:
   computes which tasks are kept, retired, replaced, or deferred during reload
 - `[src/crdo/schedule_pass_planner.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_pass_planner.cr)`:
   turns task runtime state into explicit scheduling-pass decisions
+- `[src/crdo/schedule_task_lifecycle.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_task_lifecycle.cr)`:
+  applies task start, stop, overtime, and deferred-activation side effects
 - `[src/crdo/schedule_support.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_support.cr)`:
   contains the shared plan, loop-action, event-action, and pass-decision types
 
