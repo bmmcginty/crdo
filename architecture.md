@@ -26,20 +26,21 @@ The program is split into small components, but the control flow is still center
 
 ## Main runtime flow
 
-The core runtime lives in `[src/crdo/schedule.cr](/home/bmmcginty/git/crdo/src/crdo/schedule.cr)`.
+The core runtime is now split between `[src/crdo/schedule.cr](/home/bmmcginty/git/crdo/src/crdo/schedule.cr)` and `[src/crdo/schedule_loop_runner.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_loop_runner.cr)`.
 
 Startup sequence:
 
 1. `Schedule#load(true)` builds a `Crontab`, verifies it, creates `TaskState` objects, and optionally restores persisted state.
-2. `Schedule#loop` creates channels for run-state requests and task completion events.
-3. Each loop iteration asks `ScheduleLoopController#next_action` what the loop should do next: run a scheduling pass, wait, save-and-exit, or exit.
-4. If a scheduling pass is requested, `SchedulePassPlanner` turns each eligible `TaskState` into a `SchedulePassDecision`.
-5. `Schedule` applies those planned pass actions by starting tasks or sending overtime mail, then updates wait reasons and timeout data in `ScheduleLoopController`.
-6. The loop blocks in `LoopWaiter#wait` until one of three things happens:
+2. `Schedule#loop` delegates to `ScheduleLoopRunner`.
+3. `ScheduleLoopRunner#run` creates channels for run-state requests and task completion events.
+4. Each loop iteration asks `ScheduleLoopController#next_action` what the loop should do next: run a scheduling pass, wait, save-and-exit, or exit.
+5. If a scheduling pass is requested, `SchedulePassPlanner` turns each eligible `TaskState` into a `SchedulePassDecision`.
+6. `Schedule` applies those planned pass actions by starting tasks or sending overtime mail, then updates wait reasons and timeout data in `ScheduleLoopController`.
+7. The loop blocks in `LoopWaiter#wait` until one of three things happens:
    - a signal-driven run-state request arrives
    - a task finishes
    - the shortest computed timeout expires
-7. The resulting `ScheduleEvent` is handed back to `ScheduleLoopController`, which returns a higher-level `ScheduleEventAction` such as reload, report, save, transition, or break-loop.
+8. The resulting `ScheduleEvent` is handed back to `ScheduleLoopController`, which returns a `ScheduleEventDecision` describing the higher-level action such as reload, report, save, transition, or break-loop.
 
 ## Config loading and validation
 
