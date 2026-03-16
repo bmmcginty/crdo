@@ -1,5 +1,5 @@
 require "spec"
-require "../crdo"
+require "../src/crdo/all"
 
 class FakeClock < Clock
   @current : Time
