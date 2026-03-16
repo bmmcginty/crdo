@@ -11,11 +11,13 @@ class Schedule
   @print_report = true
   @reasons = [] of TaskWaitState
   @deferred_tasks = Hash(String, Task).new
+  @previous_now : Time? = nil
+  @current_now : Time? = nil
   @state_store : ScheduleStateStore
   @reporter : ScheduleReporter
 
   delegate :select, to: @schedule
-  getter immediate, filter, clock
+  getter immediate, filter, clock, previous_now, current_now
 
   def initialize(@test, @immediate, @filter, @crontab, @clock : Clock = SystemClock.new, @loop_waiter : LoopWaiter = SelectLoopWaiter.new)
     @state_store = ScheduleStateStore.new(@crontab)
@@ -166,6 +168,7 @@ class Schedule
         exit
       end
       if controller.scheduling_open?
+        @current_now = @clock.now
         reasons.clear
         @schedule.each do |i|
           if do_filter && !@filter.includes?(i.task.name)
@@ -187,6 +190,7 @@ class Schedule
         end
         controller.update_reasons(reasons)
         @reasons = controller.reasons
+        @previous_now = @current_now
       end
       result = @loop_waiter.wait(run_state_channel, events, controller.shortest_timeout)
       case result.kind

@@ -111,6 +111,7 @@ describe TaskRunEligibilityEvaluator do
         running: [] of TaskState,
         immediate: false,
         filter: Set(String).new,
+        previous_now: nil,
         now: Time.local))
 
     result[:reason].wait?.should be_true
@@ -130,9 +131,90 @@ describe TaskRunEligibilityEvaluator do
         running: [] of TaskState,
         immediate: true,
         filter: Set{"child"},
+        previous_now: nil,
         now: Time.local))
 
     result[:reason].none?.should be_true
+  end
+end
+
+describe "when_policy" do
+  it "runs after a missed forward jump when configured to after" do
+    evaluator = TaskRunEligibilityEvaluator.new
+    state = TaskState.new(
+      task: load_task("a", "when: 01:00\nwhen_policy: true\ncommands:\n  - /bin/true\n"),
+      schedule: Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml")
+    )
+
+    result = evaluator.evaluate(
+      state,
+      TaskRunContext.new(
+        running: [] of TaskState,
+        immediate: false,
+        filter: Set(String).new,
+        previous_now: Time.local(2026, 3, 16, 0, 59, 0),
+        now: Time.local(2026, 3, 16, 1, 1, 0)))
+
+    result[:reason].none?.should be_true
+  end
+
+  it "skips a missed forward jump when configured to skip" do
+    evaluator = TaskRunEligibilityEvaluator.new
+    state = TaskState.new(
+      task: load_task("a", "when: 01:00\nwhen_policy:\n  forward: skip\n  backward: once\ncommands:\n  - /bin/true\n"),
+      schedule: Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml")
+    )
+
+    result = evaluator.evaluate(
+      state,
+      TaskRunContext.new(
+        running: [] of TaskState,
+        immediate: false,
+        filter: Set(String).new,
+        previous_now: Time.local(2026, 3, 16, 0, 59, 0),
+        now: Time.local(2026, 3, 16, 1, 1, 0)))
+
+    result[:reason].wait?.should be_true
+  end
+
+  it "suppresses a repeated backward slot when configured to once" do
+    evaluator = TaskRunEligibilityEvaluator.new
+    state = TaskState.new(
+      task: load_task("a", "when: 01:00\nwhen_policy: true\ncommands:\n  - /bin/true\n"),
+      schedule: Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml")
+    )
+    location = Time::Location.load("America/New_York")
+    first_slot = Time.utc(2026, 11, 1, 5, 0, 0).in(location)
+    second_slot = Time.utc(2026, 11, 1, 6, 0, 0).in(location)
+    state.apply_snapshot(TaskStateSnapshot.new(
+      last_start: first_slot,
+      last_stop: nil,
+      last_status: 0
+    ))
+    matcher = state.task.when_specs.first
+
+    matcher.slot_key(first_slot).should eq(matcher.slot_key(second_slot))
+    evaluator.slot_runnable?(state.task, matcher, state, second_slot).should be_false
+  end
+
+  it "allows a repeated backward slot when configured to repeat" do
+    evaluator = TaskRunEligibilityEvaluator.new
+    state = TaskState.new(
+      task: load_task("a", "when: 01:00\nwhen_policy:\n  forward: skip\n  backward: repeat\ncommands:\n  - /bin/true\n"),
+      schedule: Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml")
+    )
+    location = Time::Location.load("America/New_York")
+    first_slot = Time.utc(2026, 11, 1, 5, 0, 0).in(location)
+    second_slot = Time.utc(2026, 11, 1, 6, 0, 0).in(location)
+    state.apply_snapshot(TaskStateSnapshot.new(
+      last_start: first_slot,
+      last_stop: nil,
+      last_status: 0
+    ))
+    matcher = state.task.when_specs.first
+
+    matcher.slot_key(first_slot).should eq(matcher.slot_key(second_slot))
+    evaluator.slot_runnable?(state.task, matcher, state, second_slot).should be_true
   end
 end
 

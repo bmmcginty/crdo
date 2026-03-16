@@ -183,6 +183,7 @@ class TaskState
         running: @schedule.running,
         immediate: @schedule.immediate,
         filter: @schedule.filter,
+        previous_now: @schedule.previous_now,
         now: @schedule.clock.now))
   end
 end

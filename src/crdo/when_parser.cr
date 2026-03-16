@@ -48,6 +48,18 @@ struct TimeMatcher
     truncate(t)
   end
 
+  def slot_key(t)
+    slot = truncate(t)
+    case
+    when @minute
+      slot.to_s("%Y-%m-%d %H:%M")
+    when @hour
+      slot.to_s("%Y-%m-%d %H")
+    else
+      slot.to_s("%Y-%m-%d")
+    end
+  end
+
   def find_next(t)
     interval = get_interval
     t += interval

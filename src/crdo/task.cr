@@ -8,10 +8,11 @@ class Task
   @every : Time::Span? = nil
   @group : String? = nil
   @parent : String? = nil
+  @when_policy : WhenPolicy? = nil
   @global : GlobalConfig
   @disabled = false
   @use_stop_time = false
-  getter name, every, group, parent, use_stop_time, commands, global, disabled, error_body, error_command, vars
+  getter name, every, group, parent, use_stop_time, commands, global, disabled, error_body, error_command, vars, when_policy
 
   def when_specs
     @when
@@ -26,6 +27,7 @@ class Task
       error_command: @error_command,
       when: @when.map(&.signature).sort,
       every_seconds: @every.try(&.total_seconds),
+      when_policy: @when_policy,
       group: @group,
       parent: @parent,
       disabled: @disabled,
@@ -51,6 +53,8 @@ class Task
         yaml_string_array(v).each do |value|
           @when.concat(parse_when(value))
         end
+      when "when_policy"
+        @when_policy = parse_when_policy(v)
       when "error_body"
         @error_body = v.as_s
       when "error_command"
@@ -87,6 +91,9 @@ class Task
     end
     if data["use_stop_time"]? && !@every
       raise Exception.new("task #{name} can only use `use_stop_time` with `every`")
+    end
+    if data["when_policy"]? && @when.empty?
+      raise Exception.new("task #{name} can only use `when_policy` with `when`")
     end
   end
 

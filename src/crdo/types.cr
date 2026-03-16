@@ -21,6 +21,29 @@ record TaskStateSnapshot,
 
 alias TaskEvent = Tuple(TaskState, Int32, Int32, Time)
 
+enum WhenForwardPolicy
+  After
+  Skip
+end
+
+enum WhenBackwardPolicy
+  Once
+  Repeat
+end
+
+record WhenPolicy,
+  forward : WhenForwardPolicy,
+  backward : WhenBackwardPolicy
+
+struct WhenPolicy
+  def to_json(json : JSON::Builder)
+    json.object do
+      json.field "forward", forward.to_s.downcase
+      json.field "backward", backward.to_s.downcase
+    end
+  end
+end
+
 enum RunState
   Normal
   Reload
@@ -67,6 +90,39 @@ def yaml_string_array(value : YAML::Any)
   else
     [value.as_s]
   end
+end
+
+def parse_when_policy(value : YAML::Any)
+  if value.raw == true
+    return WhenPolicy.new(
+      forward: WhenForwardPolicy::After,
+      backward: WhenBackwardPolicy::Once)
+  end
+  if value.raw == false
+    return nil
+  end
+  policy = value.as_h
+  forward = case policy["forward"]?.try(&.as_s?)
+            when nil
+              WhenForwardPolicy::Skip
+            when "after"
+              WhenForwardPolicy::After
+            when "skip"
+              WhenForwardPolicy::Skip
+            else
+              raise Exception.new("invalid when_policy forward #{policy["forward"]}")
+            end
+  backward = case policy["backward"]?.try(&.as_s?)
+             when nil
+               WhenBackwardPolicy::Once
+             when "once"
+               WhenBackwardPolicy::Once
+             when "repeat"
+               WhenBackwardPolicy::Repeat
+             else
+               raise Exception.new("invalid when_policy backward #{policy["backward"]}")
+             end
+  WhenPolicy.new(forward: forward, backward: backward)
 end
 
 def parse_time_span(txt)

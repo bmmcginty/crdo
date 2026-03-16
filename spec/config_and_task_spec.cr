@@ -58,6 +58,22 @@ describe Task do
     task.error_body.should eq("fix it")
     task.error_command.should eq("/bin/true")
   end
+
+  it "parses when_policy from true or mapping form" do
+    task = load_task(
+      "a",
+      "when: 01:00\nwhen_policy: true\ncommands:\n  - /bin/true\n"
+    )
+    task.when_policy.not_nil!.forward.after?.should be_true
+    task.when_policy.not_nil!.backward.once?.should be_true
+
+    mapped = load_task(
+      "b",
+      "when: 01:00\nwhen_policy:\n  forward: skip\n  backward: repeat\ncommands:\n  - /bin/true\n"
+    )
+    mapped.when_policy.not_nil!.forward.skip?.should be_true
+    mapped.when_policy.not_nil!.backward.repeat?.should be_true
+  end
 end
 
 describe Crontab do
