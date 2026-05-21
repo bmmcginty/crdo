@@ -1,0 +1,10 @@
+name: crdo
+version: 0.1.0
+
+targets:
+  crdo:
+    main: src/crdo.cr
+
+crystal: ">= 1.0.0"
+
+license: MIT

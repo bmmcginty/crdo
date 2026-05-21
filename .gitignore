@@ -1,1 +1,4 @@
 crdo
+bin/
+lib/
+.shards/
