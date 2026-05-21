@@ -28,9 +28,10 @@ struct TimeMatcher
   @day : Int32? = nil
   @hour : Int32? = nil
   @minute : Int32? = nil
+  @day_of_week : Int32? = nil
 
-  def initialize(@month, @day, @hour, @minute)
-    if @minute == nil && @hour == nil && @day == nil && @month == nil
+  def initialize(@month, @day, @hour, @minute, @day_of_week = nil)
+    if @minute == nil && @hour == nil && @day == nil && @month == nil && @day_of_week == nil
       raise Exception.new("invalid TimeMatcher")
     end
   end
@@ -41,18 +42,20 @@ struct TimeMatcher
   end
 
   def get_interval
-    interval = case
-               when @minute
-                 1.minutes
-               when @hour
-                 1.hours
-               when @day
-                 1.days
-               when @month
-                 1.months
-               else
-                 raise Exception.new("invalid time matcher")
-               end
+    case
+    when @minute
+      1.minutes
+    when @hour
+      1.hours
+    when @day_of_week
+      7.days
+    when @day
+      1.days
+    when @month
+      1.months
+    else
+      raise Exception.new("invalid time matcher")
+    end
   end
 
   def truncate(t)
@@ -61,6 +64,8 @@ struct TimeMatcher
       t.at_beginning_of_minute
     when @hour
       t.at_beginning_of_hour
+    when @day_of_week
+      t.at_beginning_of_day
     when @day
       t.at_beginning_of_day
     when @month
@@ -71,6 +76,14 @@ struct TimeMatcher
   end # def
 
   def find_next(t)
+    if @day_of_week
+      find_next_day_of_week(t)
+    else
+      find_next_interval(t)
+    end
+  end
+
+  private def find_next_interval(t)
     interval = get_interval
     # add interval to t because we don't want to match on the current minute
     t += interval
@@ -87,12 +100,30 @@ struct TimeMatcher
     truncate(t)
   end
 
+  private def find_next_day_of_week(t)
+    target_h = @hour || 0
+    target_m = @minute || 0
+    # Step forward one calendar day at a time. Using shift(days: 1) on midnight
+    # then constructing the time via Time.local(y, m, d, h, min, s) is DST-safe:
+    # it lets Crystal apply timezone rules per day rather than adding a fixed
+    # 86400-second span that drifts across spring-forward transitions.
+    day = t.at_beginning_of_day.shift(days: 1)
+    loop do
+      candidate = Time.local(day.year, day.month, day.day, target_h, target_m, 0)
+      return candidate if match(candidate)
+      day = day.shift(days: 1)
+    end
+  end
+
   def match(t : Time)
     ret = true
     if @minute && t.minute != @minute.not_nil!
       ret = false
     end
     if @hour && t.hour != @hour.not_nil!
+      ret = false
+    end
+    if @day_of_week && t.day_of_week.value != @day_of_week.not_nil!
       ret = false
     end
     if @day && t.day != @day.not_nil!
@@ -137,6 +168,7 @@ def parse_when(txt)
   day = nil
   hour = nil
   minute = nil
+  day_of_week = nil
   words.each do |w|
     if short_day_of_week_names.includes?(w)
       if has_day_of_week
@@ -156,7 +188,7 @@ def parse_when(txt)
       raise Exception.new("invalid when #{txt} token #{w} is not month|weekday|hour:minute")
     end
   end # each
-  TimeMatcher.new(month: month, day: day, hour: hour, minute: minute)
+  TimeMatcher.new(month: month, day: day, hour: hour, minute: minute, day_of_week: day_of_week)
 end
 
 def parse_time_span(txt)
