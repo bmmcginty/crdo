@@ -984,56 +984,52 @@ marker=""
   end
 end # class
 
-def main
-  test = false
-  immediate = false
-  ct = "~/.crdo.yml"
-  filter = Array(String).new.to_set
-  parser = OptionParser.new do |parser|
-    parser.on(
-      "-h",
-      "--help",
-      "show this help") do
-      puts parser
-      exit
-    end
-    parser.on(
-      "--file name",
-      "location of crdo file"
-    ) do |name|
-      ct = name
-    end
-    parser.on(
-      "--now",
-      "run a single task without reading or writing task state"
-    ) do
-      immediate = true
-    end
-    parser.on("--test",
-      "prefix all commands with echo") do
-      test = true
-    end
-    parser.unknown_args do |args|
-      filter = args.to_set
-    end
+test = false
+immediate = false
+ct = "~/.crdo.yml"
+filter = Array(String).new.to_set
+parser = OptionParser.new do |parser|
+  parser.on(
+    "-h",
+    "--help",
+    "show this help") do
+    puts parser
+    exit
   end
-  parser.parse
-  run_state_chan = Channel(RunState).new
-  Signal::HUP.trap do
-    run_state_chan.send RunState::Reload
+  parser.on(
+    "--file name",
+    "location of crdo file"
+  ) do |name|
+    ct = name
   end
-  Signal::INT.trap do
-    run_state_chan.send RunState::Exit
+  parser.on(
+    "--now",
+    "run a single task without reading or writing task state"
+  ) do
+    immediate = true
   end
-  Signal::USR1.trap do
-    run_state_chan.send RunState::PrintReport
+  parser.on("--test",
+    "prefix all commands with echo") do
+    test = true
   end
-  Signal::USR2.trap do
-    run_state_chan.send RunState::PrintRunningReport
+  parser.unknown_args do |args|
+    filter = args.to_set
   end
-  t = Schedule.new test: test, immediate: immediate, filter: filter, crontab: ct
-  puts "crdo running with pid #{Process.pid},#{immediate ? " immediate" : ""} #{test ? "test" : "normal"} mode"
-  t.loop run_state_chan
 end
-
-main
+parser.parse
+run_state_chan = Channel(RunState).new
+Signal::HUP.trap do
+  run_state_chan.send RunState::Reload
+end
+Signal::INT.trap do
+  run_state_chan.send RunState::Exit
+end
+Signal::USR1.trap do
+  run_state_chan.send RunState::PrintReport
+end
+Signal::USR2.trap do
+  run_state_chan.send RunState::PrintRunningReport
+end
+t = Schedule.new test: test, immediate: immediate, filter: filter, crontab: ct
+puts "crdo running with pid #{Process.pid},#{immediate ? " immediate" : ""} #{test ? "test" : "normal"} mode"
+t.loop run_state_chan
