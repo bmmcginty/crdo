@@ -134,8 +134,7 @@ struct TimeMatcher
     end
     ret
   end # def
-
-end # class
+end   # class
 
 enum WaitReason
   # no reason, go ahead
@@ -155,7 +154,7 @@ enum WaitReason
 end
 
 def format_time_span(t)
-  "#{((t.days*24) + t.hours).to_s.rjust(2,'0')}:#{(t.minutes).to_s.rjust(2,'0')}:#{t.seconds.to_s.rjust(2,'0')}".gsub(/^00?:/, "")
+  "#{((t.days*24) + t.hours).to_s.rjust(2, '0')}:#{(t.minutes).to_s.rjust(2, '0')}:#{t.seconds.to_s.rjust(2, '0')}".gsub(/^00?:/, "")
 end
 
 def parse_when(txt)
@@ -254,7 +253,6 @@ class GlobalConfig
       raise Exception.new("global config must specify workdir")
     end
   end # def
-
 end
 
 # stores settings for a single task
@@ -351,8 +349,7 @@ class Task
       end
     end # each command
   end   # def
-
-end # class
+end     # class
 
 # parses and validates crdo file
 class Crontab
@@ -425,8 +422,7 @@ class Crontab
       end   # while
     end     # each
   end       # def
-
-end # class
+end         # class
 
 # each task must have a schedule item, which holds task state.
 # Tasks come from the crontab, while TaskState is loaded from a save file or created fresh on each run.
@@ -679,7 +675,7 @@ class TaskState
       return TaskWaitState.new(task: @task, reason: WaitReason::AlreadyRunning, text: @task.name, time: run_time)
     end
     # if we're $exclusive, don't run if anything else is running
-    if @task.group=="$exclusive" && @schedule.running.size>0
+    if @task.group == "$exclusive" && @schedule.running.size > 0
       return TaskWaitState.new(task: @task, reason: WaitReason::Exclusive, text: "*", time: 0.seconds)
     end
     # don't run a task in parallel with any other task in the same serial group
@@ -723,8 +719,7 @@ class TaskState
     end # if every
     raise Exception.new("task does not have every or when")
   end # def
-
-end # class
+end   # class
 
 class Schedule
   @schedule = [] of TaskState
@@ -828,7 +823,7 @@ class Schedule
     @print_report = ct.global.print_report
     @schedule.clear
     add_tasks ct.tasks
-    @schedule.sort_by! {|i| (i.task.group=="$exclusive" ? 0 : 1) }
+    @schedule.sort_by! { |i| (i.task.group == "$exclusive" ? 0 : 1) }
     if !@immediate
       load_task_state?
     end
@@ -854,7 +849,7 @@ class Schedule
   def print_report
     puts "as of #{Time.local}"
     @reasons.each do |r|
-marker=""
+      marker = ""
       puts "#{r[:task].name}, #{r[:reason].none? || r[:reason].already_running? ? "running" : r[:reason].to_s}: #{r[:text]} #{marker}#{format_time_span(r[:time])}"
     end
     puts "-----"
