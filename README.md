@@ -8,8 +8,8 @@ Inspired by [this HN comment](https://news.ycombinator.com/item?id=37879760).
 Make a .crdo.yml file in your home directory. See sample.crdo.yml for an example.
 
 ```
-crystal build crdo.cr
-./crdo
+shards build
+./bin/crdo
 ```
 
 ## Controls
