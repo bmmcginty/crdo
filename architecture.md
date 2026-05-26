@@ -138,6 +138,8 @@ Reload, pass planning, and state logic are split out of `Schedule`:
   loads and verifies crontab config, then applies initial-load or reload task-state updates from planner results
 - `[src/crdo/schedule_dependency_resetter.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_dependency_resetter.cr)`:
   clears parent dependency flags across runtime task state after load/reload
+- `[src/crdo/schedule_completion_evaluator.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_completion_evaluator.cr)`:
+  evaluates immediate-mode completion criteria across task state and active filter
 - `[src/crdo/schedule_pass_planner.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_pass_planner.cr)`:
   turns task runtime state into explicit scheduling-pass decisions
 - `[src/crdo/schedule_task_lifecycle.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_task_lifecycle.cr)`:

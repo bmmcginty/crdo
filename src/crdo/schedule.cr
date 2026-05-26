@@ -16,6 +16,7 @@ class Schedule
   @state_store : ScheduleStateStore
   @reloader : ScheduleReloader? = nil
   @dependency_resetter : ScheduleDependencyResetter? = nil
+  @completion_evaluator : ScheduleCompletionEvaluator? = nil
   @reporter : ScheduleReporter
   @pass_planner : SchedulePassPlanner
   @task_lifecycle : ScheduleTaskLifecycle? = nil
@@ -46,6 +47,10 @@ class Schedule
     @dependency_resetter ||= ScheduleDependencyResetter.new
   end
 
+  private def completion_evaluator : ScheduleCompletionEvaluator
+    @completion_evaluator ||= ScheduleCompletionEvaluator.new
+  end
+
   def [](name : String)
     @schedule.find! { |i| i.task.name == name }
   end
@@ -56,20 +61,6 @@ class Schedule
 
   def running
     @schedule.select(&.running?)
-  end
-
-  def all_tasks_have_run_once_since?(start_time)
-    do_filter = @filter.size > 0
-    ret = true
-    @schedule.each do |i|
-      if do_filter && !@filter.includes?(i.task.name)
-        next
-      end
-      if !i.has_run_successfully_once_since?(start_time)
-        ret = false
-      end
-    end
-    ret
   end
 
   def add_tasks(tasks)
@@ -157,7 +148,7 @@ class Schedule
     decision = controller.handle_event(
       event,
       @immediate,
-      all_tasks_have_run_once_since?(controller.loop_start_time)
+      completion_evaluator.all_tasks_have_run_once_since?(@schedule, @filter, controller.loop_start_time)
     )
     event_applier.apply(decision, controller)
   end
