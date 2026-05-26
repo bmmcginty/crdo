@@ -150,14 +150,6 @@ class Schedule
     clear_dependency_state
   end
 
-  def autosave(run_state_chan, wait_time = 600.seconds)
-    return unless run_state_chan
-    while 1
-      sleep(wait_time)
-      run_state_chan.not_nil!.send(RunState::Save)
-    end
-  end
-
   def print_running_report
     @reporter.print_running_report(@schedule)
   end

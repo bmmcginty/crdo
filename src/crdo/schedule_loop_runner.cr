@@ -13,7 +13,7 @@ class ScheduleLoopRunner
     @schedule.load(true)
     if @schedule.autosave > 0.seconds
       spawn do
-        @schedule.autosave(run_state_channel, @schedule.autosave)
+        autosave(run_state_channel, @schedule.autosave)
       end
       sleep(0.seconds)
     end
@@ -32,6 +32,14 @@ class ScheduleLoopRunner
       if @schedule.process_schedule_event(event, controller)
         break
       end
+    end
+  end
+
+  private def autosave(run_state_channel : Channel(RunState)?, wait_time : Time::Span)
+    return unless run_state_channel
+    while 1
+      sleep(wait_time)
+      run_state_channel.not_nil!.send(RunState::Save)
     end
   end
 end
