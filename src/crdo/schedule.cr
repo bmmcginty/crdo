@@ -15,6 +15,7 @@ class Schedule
   @current_now : Time? = nil
   @state_store : ScheduleStateStore
   @reloader : ScheduleReloader? = nil
+  @dependency_resetter : ScheduleDependencyResetter? = nil
   @reporter : ScheduleReporter
   @pass_planner : SchedulePassPlanner
   @task_lifecycle : ScheduleTaskLifecycle? = nil
@@ -41,6 +42,10 @@ class Schedule
     @reloader ||= ScheduleReloader.new(self, @crontab)
   end
 
+  private def dependency_resetter : ScheduleDependencyResetter
+    @dependency_resetter ||= ScheduleDependencyResetter.new
+  end
+
   def [](name : String)
     @schedule.find! { |i| i.task.name == name }
   end
@@ -65,15 +70,6 @@ class Schedule
       end
     end
     ret
-  end
-
-  def clear_dependency_state
-    @schedule.each do |parent|
-      children = @schedule.select { |i| i.task.parent == parent.task.name }
-      children.each do |c|
-        c.parent_status[parent.task.name] = false
-      end
-    end
   end
 
   def add_tasks(tasks)
@@ -119,7 +115,7 @@ class Schedule
     if initial && !@immediate
       load_task_state?
     end
-    clear_dependency_state
+    dependency_resetter.reset(@schedule)
   end
 
   def print_running_report
