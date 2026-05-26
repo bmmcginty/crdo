@@ -134,6 +134,8 @@ Reload, pass planning, and state logic are split out of `Schedule`:
   reads legacy and v2 state, writes v2 state atomically via temp file + rename
 - `[src/crdo/schedule_reload_planner.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_reload_planner.cr)`:
   computes which tasks are kept, retired, replaced, or deferred during reload
+- `[src/crdo/schedule_reloader.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_reloader.cr)`:
+  loads and verifies crontab config, then applies initial-load or reload task-state updates from planner results
 - `[src/crdo/schedule_pass_planner.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_pass_planner.cr)`:
   turns task runtime state into explicit scheduling-pass decisions
 - `[src/crdo/schedule_task_lifecycle.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_task_lifecycle.cr)`:

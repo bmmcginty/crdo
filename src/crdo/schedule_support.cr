@@ -42,3 +42,9 @@ record SchedulePassDecision,
   task_state : TaskState,
   wait_state : TaskWaitState,
   action : SchedulePassAction
+
+record ScheduleLoadResult,
+  task_states : Array(TaskState),
+  deferred_tasks : Hash(String, Task),
+  autosave : Time::Span,
+  print_report : Bool

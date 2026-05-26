@@ -14,6 +14,7 @@ class Schedule
   @previous_now : Time? = nil
   @current_now : Time? = nil
   @state_store : ScheduleStateStore
+  @reloader : ScheduleReloader? = nil
   @reporter : ScheduleReporter
   @pass_planner : SchedulePassPlanner
   @task_lifecycle : ScheduleTaskLifecycle? = nil
@@ -34,6 +35,10 @@ class Schedule
 
   private def event_applier : ScheduleEventApplier
     @event_applier ||= ScheduleEventApplier.new(self, @reporter)
+  end
+
+  private def reloader : ScheduleReloader
+    @reloader ||= ScheduleReloader.new(self, @crontab)
   end
 
   def [](name : String)
@@ -106,47 +111,14 @@ class Schedule
   end
 
   def load(initial = false)
-    ct = Crontab.new(@crontab)
-    ct.verify
-    @autosave = ct.global.autosave
-    @print_report = ct.global.print_report
-    if initial
-      @schedule.clear
-      add_tasks(ct.tasks)
-      @schedule.sort_by! { |i| (i.task.group == "$exclusive" ? 0 : 1) }
-      if !@immediate
-        load_task_state?
-      end
-      clear_dependency_state
-      return
+    result = reloader.load(initial, @schedule)
+    @autosave = result.autosave
+    @print_report = result.print_report
+    @schedule = result.task_states
+    @deferred_tasks = result.deferred_tasks
+    if initial && !@immediate
+      load_task_state?
     end
-
-    plan = ScheduleReloadPlanner.new(@schedule, ct.tasks).plan
-    retained = [] of TaskState
-    plan.entries.each do |entry|
-      if entry.keep_current
-        entry.current.not_nil!.keep!
-        retained << entry.current.not_nil!
-      elsif entry.retire_current
-        entry.current.not_nil!.retire!
-        retained << entry.current.not_nil!
-      else
-        next_state = TaskState.new(task: entry.task, schedule: self)
-        if entry.preserve_state
-          next_state.apply_snapshot(entry.current.not_nil!.state_snapshot)
-        end
-        retained << next_state
-      end
-    end
-
-    plan.retiring_removed.each do |task_state|
-      task_state.retire!
-      retained << task_state unless retained.includes?(task_state)
-    end
-
-    @schedule = retained.uniq
-    @deferred_tasks = plan.deferred_tasks
-    @schedule.sort_by! { |i| (i.task.group == "$exclusive" ? 0 : 1) }
     clear_dependency_state
   end
 
