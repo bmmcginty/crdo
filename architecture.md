@@ -138,6 +138,8 @@ Reload, pass planning, and state logic are split out of `Schedule`:
   turns task runtime state into explicit scheduling-pass decisions
 - `[src/crdo/schedule_task_lifecycle.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_task_lifecycle.cr)`:
   applies task start, stop, overtime, and deferred-activation side effects
+- `[src/crdo/schedule_event_applier.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_event_applier.cr)`:
+  applies event-decision side effects such as reload, save, report, and transition reporting
 - `[src/crdo/schedule_support.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_support.cr)`:
   contains the shared plan, loop-action, event-action, and pass-decision types
 

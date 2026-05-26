@@ -17,6 +17,7 @@ class Schedule
   @reporter : ScheduleReporter
   @pass_planner : SchedulePassPlanner
   @task_lifecycle : ScheduleTaskLifecycle? = nil
+  @event_applier : ScheduleEventApplier? = nil
 
   delegate :select, to: @schedule
   getter immediate, filter, clock, previous_now, current_now, autosave
@@ -29,6 +30,10 @@ class Schedule
 
   private def task_lifecycle : ScheduleTaskLifecycle
     @task_lifecycle ||= ScheduleTaskLifecycle.new(self, @reporter)
+  end
+
+  private def event_applier : ScheduleEventApplier
+    @event_applier ||= ScheduleEventApplier.new(self, @reporter)
   end
 
   def [](name : String)
@@ -194,32 +199,7 @@ class Schedule
       @immediate,
       all_tasks_have_run_once_since?(controller.loop_start_time)
     )
-    case decision.action
-    when .print_report?
-      print_report
-      false
-    when .print_running_report?
-      print_running_report
-      false
-    when .reload?
-      load
-      false
-    when .invalid?
-      @reporter.invalid_transition(decision.requested_run_state.not_nil!, controller.run_state, controller.drain_state)
-      false
-    when .save?
-      save_state
-      false
-    when .transition?
-      @reporter.run_state_changed(controller.run_state)
-      false
-    when .break_loop?
-      true
-    when .none?
-      false
-    else
-      false
-    end
+    event_applier.apply(decision, controller)
   end
 
   def loop(run_state_channel : Channel(RunState)? = nil)
