@@ -20,9 +20,9 @@ class ScheduleTaskLifecycle
     @reporter.stopped(task_state, event[1], @schedule.next_task_wait(task_state))
     if task_state.retiring && !task_state.running?
       @schedule.remove_task(task_state)
-      @schedule.activate_deferred_task(task_state.task.name, task_state.state_snapshot)
-    elsif @schedule.deferred_task?(task_state.task.name)
-      @schedule.activate_deferred_task(task_state.task.name, task_state.state_snapshot)
+      @schedule.promote_deferred_replacement(task_state.task.name, task_state.state_snapshot)
+    elsif @schedule.has_deferred_replacement?(task_state.task.name)
+      @schedule.promote_deferred_replacement(task_state.task.name, task_state.state_snapshot)
     end
   end
 end
@@ -34,11 +34,11 @@ class SchedulePassRunner
   def initialize(@lifecycle : ScheduleTaskLifecycle, @clock : Clock)
   end
 
-  def run(task_states : Array(TaskState), filter : Set(String), chan : Channel(Time), events : Channel(TaskEvent)) : SchedulePassRunResult
+  def run(states : Array(TaskState), filter : Set(String), chan : Channel(Time), events : Channel(TaskEvent)) : Tuple(Array(TaskWaitState), Time)
     pass_time = @clock.now
     reasons = [] of TaskWaitState
     do_filter = filter.size > 0
-    task_states.each do |task_state|
+    states.each do |task_state|
       if do_filter && !filter.includes?(task_state.task.name)
         next
       end
@@ -56,6 +56,6 @@ class SchedulePassRunner
       reasons << reason
     end
 
-    SchedulePassRunResult.new(reasons: reasons, pass_time: pass_time)
+    {reasons, pass_time}
   end
 end

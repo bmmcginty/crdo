@@ -57,7 +57,7 @@ class ScheduleReloadPlanner
   end
 end
 
-class ScheduleReloader
+class ScheduleConfigState
   @schedule : Schedule
   @crontab_path : String
 
@@ -106,7 +106,7 @@ class ScheduleReloader
       task_states = crontab.tasks.map { |task| TaskState.new(task: task, schedule: @schedule) }
       task_states.sort_by! { |state| (state.task.group == "$exclusive" ? 0 : 1) }
       return ScheduleLoadResult.new(
-        task_states: task_states,
+        states: task_states,
         deferred_tasks: Hash(String, Task).new,
         autosave: crontab.global.autosave,
         print_report: crontab.global.print_report)
@@ -140,7 +140,7 @@ class ScheduleReloader
     retained.sort_by! { |state| (state.task.group == "$exclusive" ? 0 : 1) }
 
     ScheduleLoadResult.new(
-      task_states: retained,
+      states: retained,
       deferred_tasks: plan.deferred_tasks,
       autosave: crontab.global.autosave,
       print_report: crontab.global.print_report)

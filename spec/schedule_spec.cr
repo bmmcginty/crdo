@@ -267,7 +267,7 @@ describe Schedule do
     )
 
     schedule = Schedule.new(test: false, immediate: true, filter: Set{"child"}, crontab: path)
-    schedule.load(true)
+    schedule.initial_load
 
     schedule["child"].should_run?[:reason].none?.should be_true
   end
@@ -280,7 +280,7 @@ describe Schedule do
     )
 
     schedule = Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: path)
-    schedule.load(true)
+    schedule.initial_load
     schedule["a"].apply_snapshot(TaskStateSnapshot.new(last_start: Time.local - 1.minute, last_stop: Time.local, last_status: 0))
     schedule.save_state
 
@@ -300,7 +300,7 @@ describe Schedule do
     )
 
     reloaded = Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: path)
-    reloaded.load(true)
+    reloaded.initial_load
     reloaded["a"].last_status.should eq(0)
   end
 
@@ -330,7 +330,7 @@ describe Schedule do
     )
 
     schedule = Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: path)
-    schedule.load(true)
+    schedule.initial_load
 
     schedule["a"].last_status.should eq(-1)
     schedule["a"].last_start.should be_nil
@@ -345,7 +345,7 @@ describe Schedule do
     )
 
     schedule = Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: path)
-    schedule.load(true)
+    schedule.initial_load
     original = schedule["task1"]
     original.started(Time.local)
 
@@ -354,7 +354,7 @@ describe Schedule do
       "task1:\n  every: 1d\n  commands:\n    - /bin/true\ntask2:\n  every: 1d\n  commands:\n    - /bin/true\n"
     )
 
-    schedule.load
+    schedule.reload_config
 
     schedule["task1"].object_id.should eq(original.object_id)
     schedule["task1"].running?.should be_true

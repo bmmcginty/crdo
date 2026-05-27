@@ -1,4 +1,4 @@
-class ScheduleLoopRunner
+class ScheduleRuntime
   @schedule : Schedule
   @clock : Clock
   @loop_waiter : LoopWaiter
@@ -18,7 +18,7 @@ class ScheduleLoopRunner
   def run(run_state_channel : Channel(RunState)? = nil)
     chan = Channel(Time).new
     events = Channel(TaskEvent).new
-    @schedule.load(true)
+    @schedule.initial_load
     if @schedule.autosave > 0.seconds
       spawn do
         autosave(run_state_channel, @schedule.autosave)
@@ -27,7 +27,7 @@ class ScheduleLoopRunner
     end
 
     while 1
-      if @drain_state.draining? && @schedule.running.size == 0
+    if @drain_state.draining? && @schedule.running.size == 0
         @drain_state = DrainState::Drained
       end
 
@@ -48,19 +48,18 @@ class ScheduleLoopRunner
   end
 
   private def run_scheduling_pass(chan : Channel(Time), events : Channel(TaskEvent))
-    result = @pass_runner.run(@schedule.task_states, @schedule.filter, chan, events)
-    reasons = result.reasons
+    reasons, pass_time = @pass_runner.run(@schedule.states, @schedule.filter, chan, events)
     wait_timeouts = reasons.select { |reason| reason[:reason].wait? }.map { |reason| reason[:time] }
     @shortest_timeout = wait_timeouts.empty? ? 1.hour : wait_timeouts.min
     reasons.sort_by! { |reason| {reason[:reason], reason[:time], reason[:task].name} }
-    @schedule.apply_pass_result(result, reasons)
+    @schedule.apply_pass_result(pass_time, reasons)
   end
 
   private def process_event(event : ScheduleEvent) : Bool
     case event.kind
     when .task_completed?
       @task_lifecycle.stopped(event.task_event.not_nil!)
-      if @schedule.immediate && all_tasks_have_run_once_since?(@schedule.task_states, @schedule.filter, @loop_start_time)
+      if @schedule.immediate && all_tasks_have_run_once_since?(@schedule.states, @schedule.filter, @loop_start_time)
         return true
       end
       false
@@ -84,7 +83,7 @@ class ScheduleLoopRunner
       return
     end
     if requested.reload?
-      @schedule.load
+      @schedule.reload_config
       return
     end
     if !@run_state.normal?
