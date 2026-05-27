@@ -132,12 +132,12 @@ class Schedule
     if event.kind.task_completed?
       task_lifecycle.stopped(event.task_event.not_nil!)
     end
-    decision = controller.handle_event(
+    control = controller.handle_event(
       event,
       @immediate,
       completion_check.all_tasks_have_run_once_since?(@schedule, @filter, controller.loop_start_time)
     )
-    event_actions.apply(decision, controller)
+    event_actions.apply(control, controller)
   end
 
   def loop(run_state_channel : Channel(RunState)? = nil)

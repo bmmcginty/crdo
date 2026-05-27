@@ -17,19 +17,23 @@ enum ScheduleLoopAction
   Exit
 end
 
-enum ScheduleEventAction
-  None
+enum ScheduleCommand
+  Wait
+  SchedulePass
+  SaveAndExit
+  Exit
   PrintReport
   PrintRunningReport
   Reload
   Save
   Transition
   Invalid
+  Continue
   BreakLoop
 end
 
-record ScheduleEventDecision,
-  action : ScheduleEventAction,
+record ScheduleControl,
+  command : ScheduleCommand,
   requested_run_state : RunState?
 
 enum SchedulePassAction

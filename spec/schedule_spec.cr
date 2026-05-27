@@ -452,13 +452,13 @@ describe ScheduleLoopController do
     exit_event = ScheduleEvent.new(kind: ScheduleEventKind::RunStateRequest, run_state: RunState::Exit, task_event: nil)
     save_event = ScheduleEvent.new(kind: ScheduleEventKind::RunStateRequest, run_state: RunState::Save, task_event: nil)
 
-    controller.handle_event(exit_event, immediate: false).action.transition?.should be_true
+    controller.handle_event(exit_event, immediate: false).command.transition?.should be_true
     controller.run_state.exit?.should be_true
     controller.drain_state.draining?.should be_true
 
-    controller.handle_event(save_event, immediate: false).action.invalid?.should be_true
-    controller.next_action(0, false).save_and_exit?.should be_true
-    controller.next_action(0, true).exit?.should be_true
+    controller.handle_event(save_event, immediate: false).command.invalid?.should be_true
+    controller.next_command(0, false).command.save_and_exit?.should be_true
+    controller.next_command(0, true).command.exit?.should be_true
   end
 
   it "sorts wait reasons and tracks the shortest timeout" do
@@ -492,9 +492,9 @@ describe ScheduleLoopController do
     controller = ScheduleLoopController.new(FakeClock.new(Time.local))
     exit_event = ScheduleEvent.new(kind: ScheduleEventKind::RunStateRequest, run_state: RunState::Exit, task_event: nil)
 
-    controller.next_action(0, false).schedule_pass?.should be_true
+    controller.next_command(0, false).command.schedule_pass?.should be_true
     controller.handle_event(exit_event, immediate: false)
-    controller.next_action(1, false).wait?.should be_true
+    controller.next_command(1, false).command.wait?.should be_true
   end
 
   it "returns break-loop for immediate completion events" do
@@ -508,8 +508,8 @@ describe ScheduleLoopController do
       task_event: {state, 0, 0, Time.local}
     )
 
-    controller.handle_event(event, immediate: true, all_tasks_have_run_once: true).action.break_loop?.should be_true
-    controller.handle_event(event, immediate: true, all_tasks_have_run_once: false).action.none?.should be_true
+    controller.handle_event(event, immediate: true, all_tasks_have_run_once: true).command.break_loop?.should be_true
+    controller.handle_event(event, immediate: true, all_tasks_have_run_once: false).command.continue?.should be_true
   end
 end
 

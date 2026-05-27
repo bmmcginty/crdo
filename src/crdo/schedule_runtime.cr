@@ -12,17 +12,17 @@ class ScheduleLoopController
     @loop_start_time = @clock.now
   end
 
-  def next_action(running_count : Int32, immediate : Bool) : ScheduleLoopAction
+  def next_command(running_count : Int32, immediate : Bool) : ScheduleControl
     if @drain_state.draining? && running_count == 0
       @drain_state = DrainState::Drained
     end
     if @drain_state.drained? && @run_state.exit?
-      return immediate ? ScheduleLoopAction::Exit : ScheduleLoopAction::SaveAndExit
+      return immediate ? ScheduleControl.new(command: ScheduleCommand::Exit, requested_run_state: nil) : ScheduleControl.new(command: ScheduleCommand::SaveAndExit, requested_run_state: nil)
     end
     if @run_state.normal? && @drain_state.none?
-      return ScheduleLoopAction::SchedulePass
+      return ScheduleControl.new(command: ScheduleCommand::SchedulePass, requested_run_state: nil)
     end
-    ScheduleLoopAction::Wait
+    ScheduleControl.new(command: ScheduleCommand::Wait, requested_run_state: nil)
   end
 
   def update_reasons(reasons : Array(TaskWaitState))
@@ -34,42 +34,42 @@ class ScheduleLoopController
     @reasons = reasons
   end
 
-  def handle_event(event : ScheduleEvent, immediate : Bool, all_tasks_have_run_once : Bool = false) : ScheduleEventDecision
+  def handle_event(event : ScheduleEvent, immediate : Bool, all_tasks_have_run_once : Bool = false) : ScheduleControl
     case event.kind
     when .run_state_request?
       handle_run_state_request(event.run_state.not_nil!)
     when .task_completed?
       if immediate && all_tasks_have_run_once
-        ScheduleEventDecision.new(action: ScheduleEventAction::BreakLoop, requested_run_state: nil)
+        ScheduleControl.new(command: ScheduleCommand::BreakLoop, requested_run_state: nil)
       else
-        ScheduleEventDecision.new(action: ScheduleEventAction::None, requested_run_state: nil)
+        ScheduleControl.new(command: ScheduleCommand::Continue, requested_run_state: nil)
       end
     when .timeout?
-      ScheduleEventDecision.new(action: ScheduleEventAction::None, requested_run_state: nil)
+      ScheduleControl.new(command: ScheduleCommand::Continue, requested_run_state: nil)
     else
-      ScheduleEventDecision.new(action: ScheduleEventAction::None, requested_run_state: nil)
+      ScheduleControl.new(command: ScheduleCommand::Continue, requested_run_state: nil)
     end
   end
 
-  private def handle_run_state_request(requested : RunState) : ScheduleEventDecision
+  private def handle_run_state_request(requested : RunState) : ScheduleControl
     if requested.print_report?
-      return ScheduleEventDecision.new(action: ScheduleEventAction::PrintReport, requested_run_state: requested)
+      return ScheduleControl.new(command: ScheduleCommand::PrintReport, requested_run_state: requested)
     end
     if requested.print_running_report?
-      return ScheduleEventDecision.new(action: ScheduleEventAction::PrintRunningReport, requested_run_state: requested)
+      return ScheduleControl.new(command: ScheduleCommand::PrintRunningReport, requested_run_state: requested)
     end
     if requested.reload?
-      return ScheduleEventDecision.new(action: ScheduleEventAction::Reload, requested_run_state: requested)
+      return ScheduleControl.new(command: ScheduleCommand::Reload, requested_run_state: requested)
     end
     if !@run_state.normal?
-      return ScheduleEventDecision.new(action: ScheduleEventAction::Invalid, requested_run_state: requested)
+      return ScheduleControl.new(command: ScheduleCommand::Invalid, requested_run_state: requested)
     end
     if requested.save?
-      return ScheduleEventDecision.new(action: ScheduleEventAction::Save, requested_run_state: requested)
+      return ScheduleControl.new(command: ScheduleCommand::Save, requested_run_state: requested)
     end
     @run_state = requested
     @drain_state = DrainState::Draining
-    ScheduleEventDecision.new(action: ScheduleEventAction::Transition, requested_run_state: requested)
+    ScheduleControl.new(command: ScheduleCommand::Transition, requested_run_state: requested)
   end
 end
 
@@ -80,8 +80,8 @@ class ScheduleEventActions
   def initialize(@schedule : Schedule, @reporter : ScheduleReporter)
   end
 
-  def apply(decision : ScheduleEventDecision, controller : ScheduleLoopController) : Bool
-    case decision.action
+  def apply(control : ScheduleControl, controller : ScheduleLoopController) : Bool
+    case control.command
     when .print_report?
       @schedule.print_report
       false
@@ -93,7 +93,7 @@ class ScheduleEventActions
       false
     when .invalid?
       @reporter.invalid_transition(
-        decision.requested_run_state.not_nil!,
+        control.requested_run_state.not_nil!,
         controller.run_state,
         controller.drain_state
       )
@@ -106,7 +106,7 @@ class ScheduleEventActions
       false
     when .break_loop?
       true
-    when .none?
+    when .continue?
       false
     else
       false
@@ -134,7 +134,7 @@ class ScheduleLoopRunner
       sleep(0.seconds)
     end
     while 1
-      case controller.next_action(@schedule.running.size, @schedule.immediate)
+      case controller.next_command(@schedule.running.size, @schedule.immediate).command
       when .save_and_exit?
         @schedule.save_state
         exit

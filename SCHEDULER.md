@@ -13,7 +13,7 @@ This file is a fast re-orientation guide for scheduler runtime flow.
 Core loop code is in `src/crdo/schedule_runtime.cr`.
 
 1. `ScheduleLoopRunner#run` loads schedule state via `Schedule#load(true)`.
-2. Loop iteration asks `ScheduleLoopController#next_action`:
+2. Loop iteration asks `ScheduleLoopController#next_command`:
    - `SchedulePass`
    - `Wait`
    - `SaveAndExit`
@@ -24,8 +24,8 @@ Core loop code is in `src/crdo/schedule_runtime.cr`.
    - task completion events,
    - timeout.
 5. Incoming event is processed via:
-   - `ScheduleLoopController#handle_event` (decision)
-   - `ScheduleEventActions#apply` (side effects)
+   - `ScheduleLoopController#handle_event` (returns a unified scheduler command)
+   - `ScheduleEventActions#apply` (executes command side effects)
 
 ## Pass Path
 
