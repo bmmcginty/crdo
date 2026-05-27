@@ -10,17 +10,6 @@ record ScheduleReloadPlan,
   retiring_removed : Array(TaskState),
   deferred_tasks : Hash(String, Task)
 
-enum SchedulePassAction
-  StartTask
-  NotifyOvertime
-  None
-end
-
-record SchedulePassDecision,
-  task_state : TaskState,
-  wait_state : TaskWaitState,
-  action : SchedulePassAction
-
 record SchedulePassRunResult,
   reasons : Array(TaskWaitState),
   pass_time : Time

@@ -446,41 +446,6 @@ describe ScheduleReloadPlanner do
   end
 end
 
-describe SchedulePassPlanner do
-  it "plans start actions only for unfiltered runnable tasks" do
-    schedule = Schedule.new(test: false, immediate: false, filter: Set{"a"}, crontab: "/tmp/unused.yml")
-    a = TaskState.new(
-      task: load_task("a", "every: 1s\ncommands:\n  - /bin/true\n"),
-      schedule: schedule
-    )
-    b = TaskState.new(
-      task: load_task("b", "every: 1s\ncommands:\n  - /bin/true\n"),
-      schedule: schedule
-    )
-
-    planner = SchedulePassPlanner.new
-    decisions = planner.plan([a, b], Set{"a"})
-
-    decisions.map(&.task_state.task.name).should eq(["a"])
-    decisions.first.action.start_task?.should be_true
-  end
-
-  it "plans overtime notifications for overdue running tasks" do
-    clock = FakeClock.new(Time.local(2026, 3, 16, 12, 0, 0))
-    schedule = Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml", clock: clock)
-    state = TaskState.new(
-      task: load_task("a", "every: 1s\ncommands:\n  - /bin/true\n"),
-      schedule: schedule
-    )
-    state.started(clock.now - 2.seconds)
-
-    decision = SchedulePassPlanner.new.plan([state], Set(String).new).first
-
-    decision.wait_state[:reason].already_running?.should be_true
-    decision.action.notify_overtime?.should be_true
-  end
-end
-
 describe ScheduleReporter do
   it "uses the injected clock when formatting wait times" do
     clock = FakeClock.new(Time.local(2026, 3, 16, 10, 0, 0))

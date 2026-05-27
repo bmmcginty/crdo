@@ -28,13 +28,12 @@ Core loop code is in `src/crdo/schedule_runtime.cr`.
 
 Core pass code is in `src/crdo/schedule_task_runtime.cr`.
 
-1. `SchedulePassPlanner#plan` evaluates each task into a pass decision:
-   - start task
-   - notify overtime
-   - no-op
-2. `SchedulePassRunner#run` executes those decisions.
-3. `ScheduleTaskLifecycle` applies start/stop side effects and deferred task activation.
-4. `ScheduleCompletionCheck` answers immediate-mode completion checks.
+1. `SchedulePassRunner#run` evaluates each task:
+   - start task if runnable
+   - notify overtime if overdue
+   - otherwise no side effects
+2. `ScheduleTaskLifecycle` applies start/stop side effects and deferred task activation.
+3. Immediate-mode completion checks are performed directly in `ScheduleLoopRunner`.
 
 ## Reload Path
 
@@ -49,7 +48,7 @@ Core reload/state code is in `src/crdo/schedule_reload.cr`.
    - `task_states`
    - `deferred_tasks`
    - global knobs (`autosave`, `print_report`)
-4. `ScheduleDependencyState#reset` clears parent dependency flags after load/reload.
+4. `ScheduleReloader#reset_dependencies` clears parent dependency flags after load/reload.
 5. State persistence compatibility (`.state` legacy + v2) is also in `ScheduleReloader`.
 
 ## Signal Path

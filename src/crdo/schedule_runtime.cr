@@ -4,7 +4,6 @@ class ScheduleLoopRunner
   @loop_waiter : LoopWaiter
   @pass_runner : SchedulePassRunner
   @task_lifecycle : ScheduleTaskLifecycle
-  @completion_check : ScheduleCompletionCheck
   @loop_start_time : Time
   @run_state = RunState::Normal
   @drain_state = DrainState::None
@@ -12,8 +11,7 @@ class ScheduleLoopRunner
 
   def initialize(@schedule : Schedule, @clock : Clock, @loop_waiter : LoopWaiter)
     @task_lifecycle = ScheduleTaskLifecycle.new(@schedule, @schedule.reporter)
-    @pass_runner = SchedulePassRunner.new(SchedulePassPlanner.new, @task_lifecycle, @clock)
-    @completion_check = ScheduleCompletionCheck.new
+    @pass_runner = SchedulePassRunner.new(@task_lifecycle, @clock)
     @loop_start_time = @clock.now
   end
 
@@ -62,7 +60,7 @@ class ScheduleLoopRunner
     case event.kind
     when .task_completed?
       @task_lifecycle.stopped(event.task_event.not_nil!)
-      if @schedule.immediate && @completion_check.all_tasks_have_run_once_since?(@schedule.task_states, @schedule.filter, @loop_start_time)
+      if @schedule.immediate && all_tasks_have_run_once_since?(@schedule.task_states, @schedule.filter, @loop_start_time)
         return true
       end
       false
@@ -108,5 +106,16 @@ class ScheduleLoopRunner
       sleep(wait_time)
       run_state_channel.not_nil!.send(RunState::Save)
     end
+  end
+
+  private def all_tasks_have_run_once_since?(task_states : Array(TaskState), filter : Set(String), start_time : Time) : Bool
+    do_filter = filter.size > 0
+    task_states.each do |task_state|
+      if do_filter && !filter.includes?(task_state.task.name)
+        next
+      end
+      return false unless task_state.has_run_successfully_once_since?(start_time)
+    end
+    true
   end
 end

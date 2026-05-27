@@ -146,6 +146,15 @@ class ScheduleReloader
       print_report: crontab.global.print_report)
   end
 
+  def reset_dependencies(task_states : Array(TaskState))
+    task_states.each do |parent|
+      children = task_states.select { |state| state.task.parent == parent.task.name }
+      children.each do |child|
+        child.parent_status[parent.task.name] = false
+      end
+    end
+  end
+
   private def load_state_data
     path = @crontab_path + ".state"
     src = Path[path].expand(home: true)
@@ -177,16 +186,5 @@ class ScheduleReloader
                    nil
                  end,
       last_status: data["last_status"]?.try(&.as_i?) || -1)
-  end
-end
-
-class ScheduleDependencyState
-  def reset(task_states : Array(TaskState))
-    task_states.each do |parent|
-      children = task_states.select { |state| state.task.parent == parent.task.name }
-      children.each do |child|
-        child.parent_status[parent.task.name] = false
-      end
-    end
   end
 end

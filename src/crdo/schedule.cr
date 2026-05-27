@@ -14,8 +14,6 @@ class Schedule
   @previous_now : Time? = nil
   @current_now : Time? = nil
   @reloader : ScheduleReloader? = nil
-  @dependency_state : ScheduleDependencyState? = nil
-  @completion_check : ScheduleCompletionCheck? = nil
   @reporter : ScheduleReporter
 
   delegate :select, to: @schedule
@@ -27,14 +25,6 @@ class Schedule
 
   private def reloader : ScheduleReloader
     @reloader ||= ScheduleReloader.new(self, @crontab)
-  end
-
-  private def dependency_state : ScheduleDependencyState
-    @dependency_state ||= ScheduleDependencyState.new
-  end
-
-  private def completion_check : ScheduleCompletionCheck
-    @completion_check ||= ScheduleCompletionCheck.new
   end
 
   def [](name : String)
@@ -96,7 +86,7 @@ class Schedule
     if initial && !@immediate
       load_task_state?
     end
-    dependency_state.reset(@schedule)
+    reloader.reset_dependencies(@schedule)
   end
 
   def print_running_report

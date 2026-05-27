@@ -1,29 +1,3 @@
-class SchedulePassPlanner
-  def plan(task_states : Array(TaskState), filter : Set(String)) : Array(SchedulePassDecision)
-    decisions = [] of SchedulePassDecision
-    do_filter = filter.size > 0
-    task_states.each do |task_state|
-      if do_filter && !filter.includes?(task_state.task.name)
-        next
-      end
-
-      wait_state = task_state.should_run?
-      action = if wait_state[:reason].none?
-                 SchedulePassAction::StartTask
-               elsif task_state.should_notify_overtime?
-                 SchedulePassAction::NotifyOvertime
-               else
-                 SchedulePassAction::None
-               end
-      decisions << SchedulePassDecision.new(
-        task_state: task_state,
-        wait_state: wait_state,
-        action: action)
-    end
-    decisions
-  end
-end
-
 class ScheduleTaskLifecycle
   @schedule : Schedule
   @reporter : ScheduleReporter
@@ -54,46 +28,34 @@ class ScheduleTaskLifecycle
 end
 
 class SchedulePassRunner
-  @planner : SchedulePassPlanner
   @lifecycle : ScheduleTaskLifecycle
   @clock : Clock
 
-  def initialize(@planner : SchedulePassPlanner, @lifecycle : ScheduleTaskLifecycle, @clock : Clock)
+  def initialize(@lifecycle : ScheduleTaskLifecycle, @clock : Clock)
   end
 
   def run(task_states : Array(TaskState), filter : Set(String), chan : Channel(Time), events : Channel(TaskEvent)) : SchedulePassRunResult
     pass_time = @clock.now
     reasons = [] of TaskWaitState
-    @planner.plan(task_states, filter).each do |decision|
-      task_state = decision.task_state
-      reason = decision.wait_state
-      case decision.action
-      when .start_task?
-        spawn do
-          task_state.run(chan, events)
-        end
-        sleep(0.seconds)
-        @lifecycle.started(task_state, chan.receive)
-      when .notify_overtime?
-        @lifecycle.notify_overtime(task_state)
-      when .none?
-      end
-      reasons << reason
-    end
-
-    SchedulePassRunResult.new(reasons: reasons, pass_time: pass_time)
-  end
-end
-
-class ScheduleCompletionCheck
-  def all_tasks_have_run_once_since?(task_states : Array(TaskState), filter : Set(String), start_time : Time) : Bool
     do_filter = filter.size > 0
     task_states.each do |task_state|
       if do_filter && !filter.includes?(task_state.task.name)
         next
       end
-      return false unless task_state.has_run_successfully_once_since?(start_time)
+
+      reason = task_state.should_run?
+      if reason[:reason].none?
+        spawn do
+          task_state.run(chan, events)
+        end
+        sleep(0.seconds)
+        @lifecycle.started(task_state, chan.receive)
+      elsif task_state.should_notify_overtime?
+        @lifecycle.notify_overtime(task_state)
+      end
+      reasons << reason
     end
-    true
+
+    SchedulePassRunResult.new(reasons: reasons, pass_time: pass_time)
   end
 end
