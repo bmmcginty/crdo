@@ -73,53 +73,18 @@ class ScheduleLoopController
   end
 end
 
-class ScheduleEventActions
-  @schedule : Schedule
-  @reporter : ScheduleReporter
-
-  def initialize(@schedule : Schedule, @reporter : ScheduleReporter)
-  end
-
-  def apply(control : ScheduleControl, controller : ScheduleLoopController) : Bool
-    case control.command
-    when .print_report?
-      @schedule.print_report
-      false
-    when .print_running_report?
-      @schedule.print_running_report
-      false
-    when .reload?
-      @schedule.load
-      false
-    when .invalid?
-      @reporter.invalid_transition(
-        control.requested_run_state.not_nil!,
-        controller.run_state,
-        controller.drain_state
-      )
-      false
-    when .save?
-      @schedule.save_state
-      false
-    when .transition?
-      @reporter.run_state_changed(controller.run_state)
-      false
-    when .break_loop?
-      true
-    when .continue?
-      false
-    else
-      false
-    end
-  end
-end
-
 class ScheduleLoopRunner
   @schedule : Schedule
   @clock : Clock
   @loop_waiter : LoopWaiter
+  @pass_runner : SchedulePassRunner
+  @task_lifecycle : ScheduleTaskLifecycle
+  @completion_check : ScheduleCompletionCheck
 
   def initialize(@schedule : Schedule, @clock : Clock, @loop_waiter : LoopWaiter)
+    @task_lifecycle = ScheduleTaskLifecycle.new(@schedule, @schedule.reporter)
+    @pass_runner = SchedulePassRunner.new(SchedulePassPlanner.new, @task_lifecycle, @clock)
+    @completion_check = ScheduleCompletionCheck.new
   end
 
   def run(run_state_channel : Channel(RunState)? = nil)
@@ -141,13 +106,64 @@ class ScheduleLoopRunner
       when .exit?
         exit
       when .schedule_pass?
-        @schedule.run_scheduling_pass(controller, chan, events)
+        run_scheduling_pass(controller, chan, events)
       when .wait?
       end
       event = @loop_waiter.wait(run_state_channel, events, controller.shortest_timeout)
-      if @schedule.process_schedule_event(event, controller)
+      if process_schedule_event(event, controller)
         break
       end
+    end
+  end
+
+  private def run_scheduling_pass(controller : ScheduleLoopController, chan : Channel(Time), events : Channel(TaskEvent))
+    result = @pass_runner.run(@schedule.task_states, @schedule.filter, chan, events)
+    controller.update_reasons(result.reasons)
+    @schedule.apply_pass_result(result, controller.reasons)
+  end
+
+  private def process_schedule_event(event : ScheduleEvent, controller : ScheduleLoopController) : Bool
+    if event.kind.task_completed?
+      @task_lifecycle.stopped(event.task_event.not_nil!)
+    end
+    control = controller.handle_event(
+      event,
+      @schedule.immediate,
+      @completion_check.all_tasks_have_run_once_since?(@schedule.task_states, @schedule.filter, controller.loop_start_time)
+    )
+    apply_command(control, controller)
+  end
+
+  private def apply_command(control : ScheduleControl, controller : ScheduleLoopController) : Bool
+    case control.command
+    when .print_report?
+      @schedule.print_report
+      false
+    when .print_running_report?
+      @schedule.print_running_report
+      false
+    when .reload?
+      @schedule.load
+      false
+    when .invalid?
+      @schedule.reporter.invalid_transition(
+        control.requested_run_state.not_nil!,
+        controller.run_state,
+        controller.drain_state
+      )
+      false
+    when .save?
+      @schedule.save_state
+      false
+    when .transition?
+      @schedule.reporter.run_state_changed(controller.run_state)
+      false
+    when .break_loop?
+      true
+    when .continue?
+      false
+    else
+      false
     end
   end
 

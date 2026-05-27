@@ -19,13 +19,14 @@ Core loop code is in `src/crdo/schedule_runtime.cr`.
    - `SaveAndExit`
    - `Exit`
 3. If `SchedulePass`, `Schedule#run_scheduling_pass` executes one pass.
+3. If `SchedulePass`, `ScheduleLoopRunner` executes one pass directly with task runtime helpers.
 4. Waiter blocks on:
    - run-state events (if channel exists),
    - task completion events,
    - timeout.
-5. Incoming event is processed via:
+5. Incoming event is processed inside `ScheduleLoopRunner` via:
    - `ScheduleLoopController#handle_event` (returns a unified scheduler command)
-   - `ScheduleEventActions#apply` (executes command side effects)
+   - local command dispatch (reload/save/report/transition/continue/break)
 
 ## Pass Path
 

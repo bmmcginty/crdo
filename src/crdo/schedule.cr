@@ -17,29 +17,12 @@ class Schedule
   @dependency_state : ScheduleDependencyState? = nil
   @completion_check : ScheduleCompletionCheck? = nil
   @reporter : ScheduleReporter
-  @pass_planner : SchedulePassPlanner
-  @pass_runner : SchedulePassRunner? = nil
-  @task_lifecycle : ScheduleTaskLifecycle? = nil
-  @event_actions : ScheduleEventActions? = nil
 
   delegate :select, to: @schedule
-  getter immediate, filter, clock, previous_now, current_now, autosave
+  getter immediate, filter, clock, previous_now, current_now, autosave, reporter
 
   def initialize(@test, @immediate, @filter, @crontab, @clock : Clock = SystemClock.new, @loop_waiter : LoopWaiter = SelectLoopWaiter.new)
     @reporter = ScheduleReporter.new(@clock)
-    @pass_planner = SchedulePassPlanner.new
-  end
-
-  private def task_lifecycle : ScheduleTaskLifecycle
-    @task_lifecycle ||= ScheduleTaskLifecycle.new(self, @reporter)
-  end
-
-  private def pass_runner : SchedulePassRunner
-    @pass_runner ||= SchedulePassRunner.new(@pass_planner, task_lifecycle, @clock)
-  end
-
-  private def event_actions : ScheduleEventActions
-    @event_actions ||= ScheduleEventActions.new(self, @reporter)
   end
 
   private def reloader : ScheduleReloader
@@ -64,6 +47,10 @@ class Schedule
 
   def running
     @schedule.select(&.running?)
+  end
+
+  def task_states
+    @schedule
   end
 
   def add_tasks(tasks)
@@ -120,24 +107,10 @@ class Schedule
     @reporter.print_report(@reasons)
   end
 
-  def run_scheduling_pass(controller : ScheduleLoopController, chan : Channel(Time), events : Channel(TaskEvent))
-    result = pass_runner.run(@schedule, @filter, chan, events)
-    controller.update_reasons(result.reasons)
-    @reasons = controller.reasons
+  def apply_pass_result(result : SchedulePassRunResult, reasons : Array(TaskWaitState))
+    @reasons = reasons
     @current_now = result.pass_time
     @previous_now = result.pass_time
-  end
-
-  def process_schedule_event(event : ScheduleEvent, controller : ScheduleLoopController) : Bool
-    if event.kind.task_completed?
-      task_lifecycle.stopped(event.task_event.not_nil!)
-    end
-    control = controller.handle_event(
-      event,
-      @immediate,
-      completion_check.all_tasks_have_run_once_since?(@schedule, @filter, controller.loop_start_time)
-    )
-    event_actions.apply(control, controller)
   end
 
   def loop(run_state_channel : Channel(RunState)? = nil)
