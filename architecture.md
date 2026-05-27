@@ -26,7 +26,7 @@ The program is split into small components, but the control flow is still center
 
 ## Main runtime flow
 
-The core runtime is now split between `[src/crdo/schedule.cr](/home/bmmcginty/git/crdo/src/crdo/schedule.cr)` and `[src/crdo/schedule_loop_runner.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_loop_runner.cr)`.
+The core runtime is now split between `[src/crdo/schedule.cr](/home/bmmcginty/git/crdo/src/crdo/schedule.cr)`, `[src/crdo/schedule_runtime.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_runtime.cr)`, `[src/crdo/schedule_task_runtime.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_task_runtime.cr)`, and `[src/crdo/schedule_reload.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_reload.cr)`.
 
 Startup sequence:
 
@@ -128,26 +128,16 @@ The small support record used by the evaluator lives in `[src/crdo/task_support.
 
 ## Reload and persisted state
 
-Reload, pass planning, and state logic are split out of `Schedule`:
+Reload, runtime pass handling, and state logic are split out of `Schedule`:
 
 - `[src/crdo/schedule_state_store.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_state_store.cr)`:
   reads legacy and v2 state, writes v2 state atomically via temp file + rename
-- `[src/crdo/schedule_reload_planner.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_reload_planner.cr)`:
-  computes which tasks are kept, retired, replaced, or deferred during reload
-- `[src/crdo/schedule_reloader.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_reloader.cr)`:
-  loads and verifies crontab config, then applies initial-load or reload task-state updates from planner results
-- `[src/crdo/schedule_dependency_resetter.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_dependency_resetter.cr)`:
-  clears parent dependency flags across runtime task state after load/reload
-- `[src/crdo/schedule_completion_evaluator.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_completion_evaluator.cr)`:
-  evaluates immediate-mode completion criteria across task state and active filter
-- `[src/crdo/schedule_pass_planner.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_pass_planner.cr)`:
-  turns task runtime state into explicit scheduling-pass decisions
-- `[src/crdo/schedule_pass_runner.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_pass_runner.cr)`:
-  executes scheduling-pass decisions and returns pass-time and wait-reason results
-- `[src/crdo/schedule_task_lifecycle.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_task_lifecycle.cr)`:
-  applies task start, stop, overtime, and deferred-activation side effects
-- `[src/crdo/schedule_event_applier.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_event_applier.cr)`:
-  applies event-decision side effects such as reload, save, report, and transition reporting
+- `[src/crdo/schedule_reload.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_reload.cr)`:
+  contains reload planning, reload application, and dependency reset logic
+- `[src/crdo/schedule_task_runtime.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_task_runtime.cr)`:
+  contains pass planning/execution, task lifecycle side effects, and immediate completion evaluation
+- `[src/crdo/schedule_runtime.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_runtime.cr)`:
+  contains loop controller, loop runner, and event-decision side-effect application
 - `[src/crdo/schedule_support.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_support.cr)`:
   contains the shared plan, loop-action, event-action, and pass-decision types
 
