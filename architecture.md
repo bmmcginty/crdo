@@ -142,6 +142,8 @@ Reload, pass planning, and state logic are split out of `Schedule`:
   evaluates immediate-mode completion criteria across task state and active filter
 - `[src/crdo/schedule_pass_planner.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_pass_planner.cr)`:
   turns task runtime state into explicit scheduling-pass decisions
+- `[src/crdo/schedule_pass_runner.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_pass_runner.cr)`:
+  executes scheduling-pass decisions and returns pass-time and wait-reason results
 - `[src/crdo/schedule_task_lifecycle.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_task_lifecycle.cr)`:
   applies task start, stop, overtime, and deferred-activation side effects
 - `[src/crdo/schedule_event_applier.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_event_applier.cr)`:

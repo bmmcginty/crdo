@@ -19,6 +19,7 @@ class Schedule
   @completion_evaluator : ScheduleCompletionEvaluator? = nil
   @reporter : ScheduleReporter
   @pass_planner : SchedulePassPlanner
+  @pass_runner : SchedulePassRunner? = nil
   @task_lifecycle : ScheduleTaskLifecycle? = nil
   @event_applier : ScheduleEventApplier? = nil
 
@@ -33,6 +34,10 @@ class Schedule
 
   private def task_lifecycle : ScheduleTaskLifecycle
     @task_lifecycle ||= ScheduleTaskLifecycle.new(self, @reporter)
+  end
+
+  private def pass_runner : SchedulePassRunner
+    @pass_runner ||= SchedulePassRunner.new(@pass_planner, task_lifecycle, @clock)
   end
 
   private def event_applier : ScheduleEventApplier
@@ -118,27 +123,11 @@ class Schedule
   end
 
   def run_scheduling_pass(controller : ScheduleLoopController, chan : Channel(Time), events : Channel(TaskEvent))
-    @current_now = @clock.now
-    reasons = [] of TaskWaitState
-    @pass_planner.plan(@schedule, @filter).each do |decision|
-      task_state = decision.task_state
-      reason = decision.wait_state
-      case decision.action
-      when .start_task?
-        spawn do
-          task_state.run(chan, events)
-        end
-        sleep(0.seconds)
-        task_lifecycle.started(task_state, chan.receive)
-      when .notify_overtime?
-        task_lifecycle.notify_overtime(task_state)
-      when .none?
-      end
-      reasons << reason
-    end
-    controller.update_reasons(reasons)
+    result = pass_runner.run(@schedule, @filter, chan, events)
+    controller.update_reasons(result.reasons)
     @reasons = controller.reasons
-    @previous_now = @current_now
+    @current_now = result.pass_time
+    @previous_now = result.pass_time
   end
 
   def process_schedule_event(event : ScheduleEvent, controller : ScheduleLoopController) : Bool

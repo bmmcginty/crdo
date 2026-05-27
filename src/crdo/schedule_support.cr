@@ -43,6 +43,10 @@ record SchedulePassDecision,
   wait_state : TaskWaitState,
   action : SchedulePassAction
 
+record SchedulePassRunResult,
+  reasons : Array(TaskWaitState),
+  pass_time : Time
+
 record ScheduleLoadResult,
   task_states : Array(TaskState),
   deferred_tasks : Hash(String, Task),
