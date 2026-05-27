@@ -73,7 +73,7 @@ class ScheduleLoopController
   end
 end
 
-class ScheduleEventApplier
+class ScheduleEventActions
   @schedule : Schedule
   @reporter : ScheduleReporter
 

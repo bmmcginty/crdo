@@ -85,7 +85,7 @@ class SchedulePassRunner
   end
 end
 
-class ScheduleCompletionEvaluator
+class ScheduleCompletionCheck
   def all_tasks_have_run_once_since?(task_states : Array(TaskState), filter : Set(String), start_time : Time) : Bool
     do_filter = filter.size > 0
     task_states.each do |task_state|

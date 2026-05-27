@@ -14,13 +14,13 @@ class Schedule
   @previous_now : Time? = nil
   @current_now : Time? = nil
   @reloader : ScheduleReloader? = nil
-  @dependency_resetter : ScheduleDependencyResetter? = nil
-  @completion_evaluator : ScheduleCompletionEvaluator? = nil
+  @dependency_state : ScheduleDependencyState? = nil
+  @completion_check : ScheduleCompletionCheck? = nil
   @reporter : ScheduleReporter
   @pass_planner : SchedulePassPlanner
   @pass_runner : SchedulePassRunner? = nil
   @task_lifecycle : ScheduleTaskLifecycle? = nil
-  @event_applier : ScheduleEventApplier? = nil
+  @event_actions : ScheduleEventActions? = nil
 
   delegate :select, to: @schedule
   getter immediate, filter, clock, previous_now, current_now, autosave
@@ -38,20 +38,20 @@ class Schedule
     @pass_runner ||= SchedulePassRunner.new(@pass_planner, task_lifecycle, @clock)
   end
 
-  private def event_applier : ScheduleEventApplier
-    @event_applier ||= ScheduleEventApplier.new(self, @reporter)
+  private def event_actions : ScheduleEventActions
+    @event_actions ||= ScheduleEventActions.new(self, @reporter)
   end
 
   private def reloader : ScheduleReloader
     @reloader ||= ScheduleReloader.new(self, @crontab)
   end
 
-  private def dependency_resetter : ScheduleDependencyResetter
-    @dependency_resetter ||= ScheduleDependencyResetter.new
+  private def dependency_state : ScheduleDependencyState
+    @dependency_state ||= ScheduleDependencyState.new
   end
 
-  private def completion_evaluator : ScheduleCompletionEvaluator
-    @completion_evaluator ||= ScheduleCompletionEvaluator.new
+  private def completion_check : ScheduleCompletionCheck
+    @completion_check ||= ScheduleCompletionCheck.new
   end
 
   def [](name : String)
@@ -109,7 +109,7 @@ class Schedule
     if initial && !@immediate
       load_task_state?
     end
-    dependency_resetter.reset(@schedule)
+    dependency_state.reset(@schedule)
   end
 
   def print_running_report
@@ -135,9 +135,9 @@ class Schedule
     decision = controller.handle_event(
       event,
       @immediate,
-      completion_evaluator.all_tasks_have_run_once_since?(@schedule, @filter, controller.loop_start_time)
+      completion_check.all_tasks_have_run_once_since?(@schedule, @filter, controller.loop_start_time)
     )
-    event_applier.apply(decision, controller)
+    event_actions.apply(decision, controller)
   end
 
   def loop(run_state_channel : Channel(RunState)? = nil)

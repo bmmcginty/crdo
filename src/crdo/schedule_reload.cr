@@ -180,7 +180,7 @@ class ScheduleReloader
   end
 end
 
-class ScheduleDependencyResetter
+class ScheduleDependencyState
   def reset(task_states : Array(TaskState))
     task_states.each do |parent|
       children = task_states.select { |state| state.task.parent == parent.task.name }
