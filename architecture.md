@@ -130,10 +130,8 @@ The small support record used by the evaluator lives in `[src/crdo/task_support.
 
 Reload, runtime pass handling, and state logic are split out of `Schedule`:
 
-- `[src/crdo/schedule_state_store.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_state_store.cr)`:
-  reads legacy and v2 state, writes v2 state atomically via temp file + rename
 - `[src/crdo/schedule_reload.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_reload.cr)`:
-  contains reload planning, reload application, and dependency reset logic
+  contains reload planning, reload application, state load/save compatibility, and dependency reset logic
 - `[src/crdo/schedule_task_runtime.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_task_runtime.cr)`:
   contains pass planning/execution, task lifecycle side effects, and immediate completion evaluation
 - `[src/crdo/schedule_runtime.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_runtime.cr)`:

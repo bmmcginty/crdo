@@ -13,7 +13,6 @@ class Schedule
   @deferred_tasks = Hash(String, Task).new
   @previous_now : Time? = nil
   @current_now : Time? = nil
-  @state_store : ScheduleStateStore
   @reloader : ScheduleReloader? = nil
   @dependency_resetter : ScheduleDependencyResetter? = nil
   @completion_evaluator : ScheduleCompletionEvaluator? = nil
@@ -27,7 +26,6 @@ class Schedule
   getter immediate, filter, clock, previous_now, current_now, autosave
 
   def initialize(@test, @immediate, @filter, @crontab, @clock : Clock = SystemClock.new, @loop_waiter : LoopWaiter = SelectLoopWaiter.new)
-    @state_store = ScheduleStateStore.new(@crontab)
     @reporter = ScheduleReporter.new(@clock)
     @pass_planner = SchedulePassPlanner.new
   end
@@ -75,11 +73,11 @@ class Schedule
   end
 
   def load_task_state?
-    @state_store.load_task_state?(self)
+    reloader.load_task_state?(self)
   end
 
   def save_state
-    @state_store.save(@schedule)
+    reloader.save(@schedule)
   end
 
   def activate_deferred_task(name, snapshot)
