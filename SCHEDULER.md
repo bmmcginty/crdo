@@ -13,20 +13,16 @@ This file is a fast re-orientation guide for scheduler runtime flow.
 Core loop code is in `src/crdo/schedule_runtime.cr`.
 
 1. `ScheduleLoopRunner#run` loads schedule state via `Schedule#load(true)`.
-2. Loop iteration asks `ScheduleLoopController#next_command`:
-   - `SchedulePass`
-   - `Wait`
-   - `SaveAndExit`
-   - `Exit`
-3. If `SchedulePass`, `Schedule#run_scheduling_pass` executes one pass.
-3. If `SchedulePass`, `ScheduleLoopRunner` executes one pass directly with task runtime helpers.
+2. Loop iteration updates local runtime state (`run_state`, `drain_state`) and decides whether scheduling is open.
+3. If scheduling is open, `ScheduleLoopRunner` executes one pass directly with task runtime helpers.
 4. Waiter blocks on:
    - run-state events (if channel exists),
    - task completion events,
    - timeout.
-5. Incoming event is processed inside `ScheduleLoopRunner` via:
-   - `ScheduleLoopController#handle_event` (returns a unified scheduler command)
-   - local command dispatch (reload/save/report/transition/continue/break)
+5. Incoming event is processed directly in `ScheduleLoopRunner`:
+   - task completion: apply stop handling and check immediate-mode completion
+   - run-state request: apply reload/save/report/exit transition logic
+   - timeout: no side effects, continue loop
 
 ## Pass Path
 
@@ -63,5 +59,5 @@ Core reload/state code is in `src/crdo/schedule_reload.cr`.
   - `INT` -> `Exit`
   - `USR1` -> `PrintReport`
   - `USR2` -> `PrintRunningReport`
-- Channel is consumed by loop waiter and interpreted by `ScheduleLoopController`.
+- Channel is consumed by loop waiter and handled directly in `ScheduleLoopRunner`.
 - `spec/signal_integration_spec.cr` validates this wiring end-to-end.

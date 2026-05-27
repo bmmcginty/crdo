@@ -10,32 +10,6 @@ record ScheduleReloadPlan,
   retiring_removed : Array(TaskState),
   deferred_tasks : Hash(String, Task)
 
-enum ScheduleLoopAction
-  SchedulePass
-  Wait
-  SaveAndExit
-  Exit
-end
-
-enum ScheduleCommand
-  Wait
-  SchedulePass
-  SaveAndExit
-  Exit
-  PrintReport
-  PrintRunningReport
-  Reload
-  Save
-  Transition
-  Invalid
-  Continue
-  BreakLoop
-end
-
-record ScheduleControl,
-  command : ScheduleCommand,
-  requested_run_state : RunState?
-
 enum SchedulePassAction
   StartTask
   NotifyOvertime
