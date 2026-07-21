@@ -50,7 +50,7 @@ def main(args = ARGV)
   Signal::USR2.trap do
     events.send(SchedulerEvent.new(kind: SchedulerEventKind::PrintRunningReportRequested, task_stopped: nil))
   end
-  t = ScheduleState.new(test: options.test, immediate: options.immediate, filter: options.filter, crontab: options.crontab)
+  schedule = ScheduleState.new(test: options.test, immediate: options.immediate, filter: options.filter, crontab: options.crontab)
   puts "crdo running with pid #{Process.pid},#{options.immediate ? " immediate" : ""} #{options.test ? "test" : "normal"} mode"
-  t.loop(events)
+  ScheduleRuntime.new(schedule, schedule.clock).run(events)
 end

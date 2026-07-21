@@ -128,8 +128,4 @@ class ScheduleState
       message: message,
       time: @clock.now)
   end
-
-  def loop(events : Channel(SchedulerEvent)? = nil)
-    ScheduleRuntime.new(self, @clock).run(events)
-  end
 end
