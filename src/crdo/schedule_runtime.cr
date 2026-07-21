@@ -46,7 +46,7 @@ class ScheduleRuntime
       reason = @schedule.task_wait_state(task_state, pass_time)
       if reason[:reason].none?
         start_task(task_state, events)
-      elsif task_state.should_notify_overtime?
+      elsif task_state.should_notify_overtime?(@clock.now)
         task_state.notify_overtime
       end
       reasons << reason
@@ -73,7 +73,7 @@ class ScheduleRuntime
     task_state.started(start_time)
     @schedule.reporter.started(task_state, start_time)
     spawn do
-      task_state.run(start_time, events)
+      task_state.run(start_time, events, @schedule.test, @clock)
     end
     sleep(0.seconds)
   end

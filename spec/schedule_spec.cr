@@ -15,24 +15,15 @@ describe TaskState do
       "every: 1s\ndisabled: true\ncommands:\n  - /bin/true\n"
     )
 
-    state = TaskState.new(task: task, schedule: schedule)
+    state = TaskState.new(task: task)
     schedule.task_wait_state(state)[:reason].disabled?.should be_true
   end
 
   it "enforces serial groups and exclusive groups" do
     schedule = Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml")
-    a = TaskState.new(
-      task: load_task("a", "every: 1s\ngroup: g\ncommands:\n  - /bin/true\n"),
-      schedule: schedule
-    )
-    b = TaskState.new(
-      task: load_task("b", "every: 1s\ngroup: g\ncommands:\n  - /bin/true\n"),
-      schedule: schedule
-    )
-    ex = TaskState.new(
-      task: load_task("ex", "every: 1s\ngroup: $exclusive\ncommands:\n  - /bin/true\n"),
-      schedule: schedule
-    )
+    a = TaskState.new(task: load_task("a", "every: 1s\ngroup: g\ncommands:\n  - /bin/true\n"))
+    b = TaskState.new(task: load_task("b", "every: 1s\ngroup: g\ncommands:\n  - /bin/true\n"))
+    ex = TaskState.new(task: load_task("ex", "every: 1s\ngroup: $exclusive\ncommands:\n  - /bin/true\n"))
 
     schedule.add_tasks([a.task, b.task, ex.task])
     schedule["a"].started(Time.local)
@@ -47,7 +38,7 @@ describe TaskState do
       "a",
       "every: 10s\nuse_stop_time: true\ncommands:\n  - /bin/true\n"
     )
-    state = TaskState.new(task: task, schedule: schedule)
+    state = TaskState.new(task: task)
     state.apply_snapshot(
       TaskStateSnapshot.new(
         last_start: Time.local - 30.seconds,
@@ -65,7 +56,7 @@ describe TaskState do
       "a",
       "every: 10s\ncommands:\n  - /bin/true\n"
     )
-    state = TaskState.new(task: task, schedule: schedule)
+    state = TaskState.new(task: task)
     state.apply_snapshot(
       TaskStateSnapshot.new(
         last_start: clock.now - 8.seconds,
@@ -82,10 +73,7 @@ end
 describe TaskRunEligibilityEvaluator do
   it "uses the supplied context time for every schedules" do
     schedule = Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml")
-    state = TaskState.new(
-      task: load_task("a", "every: 10s\ncommands:\n  - /bin/true\n"),
-      schedule: schedule
-    )
+    state = TaskState.new(task: load_task("a", "every: 10s\ncommands:\n  - /bin/true\n"))
     state.apply_snapshot(
       TaskStateSnapshot.new(
         last_start: Time.local - 8.seconds,
@@ -107,10 +95,7 @@ describe TaskRunEligibilityEvaluator do
 
   it "lets immediate filtered tasks bypass parent gating in pure evaluation" do
     schedule = Schedule.new(test: false, immediate: true, filter: Set{"child"}, crontab: "/tmp/unused.yml")
-    state = TaskState.new(
-      task: load_task("child", "every: 1d\nparent: parent\ncommands:\n  - /bin/true\n"),
-      schedule: schedule
-    )
+    state = TaskState.new(task: load_task("child", "every: 1d\nparent: parent\ncommands:\n  - /bin/true\n"))
     state.parent_status["parent"] = false
 
     result = TaskRunEligibilityEvaluator.new.evaluate(
@@ -129,10 +114,7 @@ end
 describe "when_policy" do
   it "runs after a missed forward jump when configured to after" do
     evaluator = TaskRunEligibilityEvaluator.new
-    state = TaskState.new(
-      task: load_task("a", "when: 01:00\nwhen_policy: true\ncommands:\n  - /bin/true\n"),
-      schedule: Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml")
-    )
+    state = TaskState.new(task: load_task("a", "when: 01:00\nwhen_policy: true\ncommands:\n  - /bin/true\n"))
 
     result = evaluator.evaluate(
       state,
@@ -148,10 +130,7 @@ describe "when_policy" do
 
   it "skips a missed forward jump when configured to skip" do
     evaluator = TaskRunEligibilityEvaluator.new
-    state = TaskState.new(
-      task: load_task("a", "when: 01:00\nwhen_policy:\n  forward: skip\n  backward: once\ncommands:\n  - /bin/true\n"),
-      schedule: Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml")
-    )
+    state = TaskState.new(task: load_task("a", "when: 01:00\nwhen_policy:\n  forward: skip\n  backward: once\ncommands:\n  - /bin/true\n"))
 
     result = evaluator.evaluate(
       state,
@@ -167,10 +146,7 @@ describe "when_policy" do
 
   it "suppresses a repeated backward slot when configured to once" do
     evaluator = TaskRunEligibilityEvaluator.new
-    state = TaskState.new(
-      task: load_task("a", "when: 01:00\nwhen_policy: true\ncommands:\n  - /bin/true\n"),
-      schedule: Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml")
-    )
+    state = TaskState.new(task: load_task("a", "when: 01:00\nwhen_policy: true\ncommands:\n  - /bin/true\n"))
     location = Time::Location.load("America/New_York")
     first_slot = Time.utc(2026, 11, 1, 5, 0, 0).in(location)
     second_slot = Time.utc(2026, 11, 1, 6, 0, 0).in(location)
@@ -187,10 +163,7 @@ describe "when_policy" do
 
   it "allows a repeated backward slot when configured to repeat" do
     evaluator = TaskRunEligibilityEvaluator.new
-    state = TaskState.new(
-      task: load_task("a", "when: 01:00\nwhen_policy:\n  forward: skip\n  backward: repeat\ncommands:\n  - /bin/true\n"),
-      schedule: Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml")
-    )
+    state = TaskState.new(task: load_task("a", "when: 01:00\nwhen_policy:\n  forward: skip\n  backward: repeat\ncommands:\n  - /bin/true\n"))
     location = Time::Location.load("America/New_York")
     first_slot = Time.utc(2026, 11, 1, 5, 0, 0).in(location)
     second_slot = Time.utc(2026, 11, 1, 6, 0, 0).in(location)
@@ -209,14 +182,8 @@ end
 describe ScheduleRuntime do
   it "clears dependency requirements and propagates success to children" do
     schedule = Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml")
-    parent = TaskState.new(
-      task: load_task("parent", "every: 1d\ncommands:\n  - /bin/true\n"),
-      schedule: schedule
-    )
-    child = TaskState.new(
-      task: load_task("child", "every: 1d\nparent: parent\ncommands:\n  - /bin/true\n"),
-      schedule: schedule
-    )
+    parent = TaskState.new(task: load_task("parent", "every: 1d\ncommands:\n  - /bin/true\n"))
+    child = TaskState.new(task: load_task("child", "every: 1d\nparent: parent\ncommands:\n  - /bin/true\n"))
 
     schedule.add_tasks([parent.task, child.task])
     schedule["parent"].parent_status["upstream"] = true
@@ -234,14 +201,8 @@ describe ScheduleRuntime do
 
   it "treats test+error mode as a failure for dependency propagation" do
     schedule = Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml")
-    parent = TaskState.new(
-      task: load_task("parent", "every: 1d\ncommands:\n  - /bin/true\n", "workdir: .\ntest: true\nerror: true"),
-      schedule: schedule
-    )
-    child = TaskState.new(
-      task: load_task("child", "every: 1d\nparent: parent\ncommands:\n  - /bin/true\n"),
-      schedule: schedule
-    )
+    parent = TaskState.new(task: load_task("parent", "every: 1d\ncommands:\n  - /bin/true\n", "workdir: .\ntest: true\nerror: true"))
+    child = TaskState.new(task: load_task("child", "every: 1d\nparent: parent\ncommands:\n  - /bin/true\n"))
 
     schedule.add_tasks([parent.task, child.task])
     schedule["parent"].started(Time.local - 1.second)
@@ -400,18 +361,9 @@ describe ScheduleReloadPlanner do
   it "plans keep, replace, defer, and removed-running retirement without mutating state" do
     schedule = Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml")
 
-    unchanged = TaskState.new(
-      task: load_task("same", "every: 1s\ncommands:\n  - /bin/true\n"),
-      schedule: schedule
-    )
-    changed_running = TaskState.new(
-      task: load_task("changed", "every: 1s\ncommands:\n  - /bin/true\n"),
-      schedule: schedule
-    )
-    removed_running = TaskState.new(
-      task: load_task("removed", "every: 1s\ncommands:\n  - /bin/true\n"),
-      schedule: schedule
-    )
+    unchanged = TaskState.new(task: load_task("same", "every: 1s\ncommands:\n  - /bin/true\n"))
+    changed_running = TaskState.new(task: load_task("changed", "every: 1s\ncommands:\n  - /bin/true\n"))
+    removed_running = TaskState.new(task: load_task("removed", "every: 1s\ncommands:\n  - /bin/true\n"))
 
     changed_running.started(Time.local)
     removed_running.started(Time.local)
@@ -448,7 +400,7 @@ describe ScheduleReporter do
     reporter = ScheduleReporter.new(clock)
     schedule = Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml", clock: clock)
     task = load_task("a", "every: 10s\ncommands:\n  - /bin/true\n")
-    state = TaskState.new(task: task, schedule: schedule)
+    state = TaskState.new(task: task)
     state.apply_snapshot(
       TaskStateSnapshot.new(
         last_start: clock.now - 8.seconds,

@@ -44,7 +44,7 @@ class Schedule
 
   def add_tasks(tasks)
     tasks.each do |t|
-      @schedule << TaskState.new(task: t, schedule: self)
+      @schedule << TaskState.new(task: t)
     end
   end
 
@@ -59,7 +59,7 @@ class Schedule
   def promote_deferred_replacement(name, snapshot)
     next_task = @deferred_tasks.delete(name)
     return unless next_task
-    next_state = TaskState.new(task: next_task, schedule: self)
+    next_state = TaskState.new(task: next_task)
     next_state.apply_snapshot(snapshot)
     @schedule << next_state
   end

@@ -10,7 +10,7 @@ class ScheduleReporter
       next_time = @clock.now + wait_state[:time]
       "#{format_time_span(wait_state[:time])} (#{next_time})"
     else
-      next_time = state.next_scheduled_time
+      next_time = state.next_scheduled_time(@clock.now)
       "#{format_time_span(next_time - @clock.now)} (#{next_time})"
     end
   end
@@ -19,7 +19,7 @@ class ScheduleReporter
     running = schedule.select(&.running?)
     running.sort_by! { |i| i.task.name }
     running.each do |i|
-      @output.puts "#{i.task.name}, #{i.run_time}"
+      @output.puts "#{i.task.name}, #{i.run_time(@clock.now)}"
     end
     @output.puts "-----"
   end

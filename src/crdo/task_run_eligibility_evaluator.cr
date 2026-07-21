@@ -8,7 +8,7 @@ class TaskRunEligibilityEvaluator
       return TaskWaitState.new(task: task, reason: WaitReason::Disabled, text: task.name, time: 0.seconds)
     end
     if state.running?
-      return TaskWaitState.new(task: task, reason: WaitReason::AlreadyRunning, text: task.name, time: state.run_time)
+      return TaskWaitState.new(task: task, reason: WaitReason::AlreadyRunning, text: task.name, time: state.run_time(context.now))
     end
     if task.group == "$exclusive" && context.running.size > 0
       return TaskWaitState.new(task: task, reason: WaitReason::Exclusive, text: "*", time: 0.seconds)

@@ -1,6 +1,5 @@
 class TaskState
   @errors = [] of Exception
-  @schedule : Schedule
   @task : Task
   @process_runner : TaskProcessRunner
   @mailer : TaskMailer
@@ -15,11 +14,11 @@ class TaskState
   @retiring = false
   getter parent_status, task, retiring, last_start, last_stop, last_status
 
-  def initialize(@task, @schedule, @process_runner = TaskProcessRunner.new, @mailer = TaskMailer.new)
+  def initialize(@task, @process_runner = TaskProcessRunner.new, @mailer = TaskMailer.new)
   end
 
-  def run_time
-    @schedule.clock.now - @current_start.not_nil!
+  def run_time(now : Time)
+    now - @current_start.not_nil!
   end
 
   def task=(task : Task)
@@ -49,7 +48,7 @@ class TaskState
     @overtime_occured = false
   end
 
-  def should_notify_overtime?
+  def should_notify_overtime?(now : Time)
     if !@running
       return false
     end
@@ -59,7 +58,7 @@ class TaskState
     if @task.global.ignore_overtime
       return false
     end
-    if @task.every && (@schedule.clock.now - @current_start.not_nil!) > @task.every.not_nil!
+    if @task.every && (now - @current_start.not_nil!) > @task.every.not_nil!
       return true
     end
     false
@@ -121,18 +120,17 @@ class TaskState
     @process_runner.log_dn(@task, ts)
   end
 
-  def next_scheduled_time(now : Time? = nil)
-    now = now || @schedule.clock.now
+  def next_scheduled_time(now : Time)
     if @task.when_specs.size > 0
-      return @task.when_specs.map { |matcher| matcher.find_next(now.not_nil!) }.min
+      return @task.when_specs.map { |matcher| matcher.find_next(now) }.min
     end
-    return now.not_nil! unless @task.every
+    return now unless @task.every
     base = if @task.use_stop_time
              @last_stop || @last_start
            else
              @last_start
            end
-    return now.not_nil! unless base
+    return now unless base
     base.not_nil! + @task.every.not_nil!
   end
 
@@ -143,7 +141,7 @@ class TaskState
     @last_stop = stop_time
   end
 
-  def run(start_time : Time, events : Channel(SchedulerEvent))
+  def run(start_time : Time, events : Channel(SchedulerEvent), test : Bool, clock : Clock)
     @errors.clear
     last_command = -1
     rc = 0
@@ -151,7 +149,7 @@ class TaskState
       last_command += 1
       t = @task.hydrate_command(c)
       begin
-        rc = run(args: t, idx: idx, start_time: start_time)
+        rc = run(args: t, idx: idx, start_time: start_time, test: test)
       rescue exc
         rc = 999
         @errors << exc
@@ -164,12 +162,12 @@ class TaskState
         task_state: self,
         status: rc,
         last_command_index: last_command,
-        stop_time: @schedule.clock.now)))
+        stop_time: clock.now)))
   end
 
-  def run(args : Array(String), idx : Int32, start_time : Time)
+  def run(args : Array(String), idx : Int32, start_time : Time, test : Bool)
     begin
-      ret = @process_runner.run(@task, args, idx, start_time, @schedule.test)
+      ret = @process_runner.run(@task, args, idx, start_time, test)
     rescue e
       @errors << e
       raise e

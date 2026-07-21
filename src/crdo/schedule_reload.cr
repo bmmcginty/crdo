@@ -91,7 +91,7 @@ class ScheduleConfigState
       dest + ".tmp",
       {
         version: 2,
-        tasks: task_states,
+        tasks:   task_states,
       }.to_json)
     File.rename(
       dest + ".tmp",
@@ -103,7 +103,7 @@ class ScheduleConfigState
     crontab.verify
 
     if initial
-      task_states = crontab.tasks.map { |task| TaskState.new(task: task, schedule: @schedule) }
+      task_states = crontab.tasks.map { |task| TaskState.new(task: task) }
       task_states.sort_by! { |state| (state.task.group == "$exclusive" ? 0 : 1) }
       return ScheduleLoadResult.new(
         states: task_states,
@@ -123,7 +123,7 @@ class ScheduleConfigState
         entry.current.not_nil!.retire!
         retained << entry.current.not_nil!
       else
-        next_state = TaskState.new(task: entry.task, schedule: @schedule)
+        next_state = TaskState.new(task: entry.task)
         if entry.preserve_state
           next_state.apply_snapshot(entry.current.not_nil!.state_snapshot)
         end
@@ -172,19 +172,19 @@ class ScheduleConfigState
   private def snapshot_for(data : JSON::Any)
     TaskStateSnapshot.new(
       last_start: if t = data["last_start"]?.try(&.as_i64?)
-                    Time.unix(t).to_local
-                  elsif t = data["last_start_ms"]?.try(&.as_i64?)
-                    Time.unix_ms(t).to_local
-                  else
-                    nil
-                  end,
+        Time.unix(t).to_local
+      elsif t = data["last_start_ms"]?.try(&.as_i64?)
+        Time.unix_ms(t).to_local
+      else
+        nil
+      end,
       last_stop: if t = data["last_stop"]?.try(&.as_i64?)
-                   Time.unix(t).to_local
-                 elsif t = data["last_stop_ms"]?.try(&.as_i64?)
-                   Time.unix_ms(t).to_local
-                 else
-                   nil
-                 end,
+        Time.unix(t).to_local
+      elsif t = data["last_stop_ms"]?.try(&.as_i64?)
+        Time.unix_ms(t).to_local
+      else
+        nil
+      end,
       last_status: data["last_status"]?.try(&.as_i?) || -1)
   end
 end
