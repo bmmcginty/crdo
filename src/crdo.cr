@@ -1,4 +1,4 @@
-require "./src/crdo/all"
+require "./crdo/all"
 
 {% unless flag?(:crdo_spec) %}
 main
