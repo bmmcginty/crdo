@@ -11,13 +11,12 @@ class Schedule
   @reasons = [] of TaskWaitState
   @deferred_tasks = Hash(String, Task).new
   @previous_now : Time? = nil
-  @current_now : Time? = nil
   @config_state : ScheduleConfigState? = nil
   @reporter : ScheduleReporter
   @mail_failures = [] of MailFailure
 
   delegate :select, to: @schedule
-  getter immediate, filter, clock, previous_now, current_now, autosave, reporter, mail_failures
+  getter immediate, filter, clock, previous_now, autosave, reporter, mail_failures
 
   def initialize(@test, @immediate, @filter, @crontab, @clock : Clock = SystemClock.new)
     @reporter = ScheduleReporter.new(@clock)
@@ -119,7 +118,6 @@ class Schedule
 
   def apply_pass_result(pass_time : Time, reasons : Array(TaskWaitState))
     @reasons = reasons
-    @current_now = pass_time
     @previous_now = pass_time
   end
 
