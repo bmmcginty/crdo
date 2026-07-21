@@ -58,10 +58,9 @@ class ScheduleReloadPlanner
 end
 
 class ScheduleStore
-  @schedule : ScheduleState
   @crontab_path : String
 
-  def initialize(@schedule : ScheduleState, @crontab_path : String)
+  def initialize(@crontab_path : String)
   end
 
   def load_task_state?(schedule : ScheduleState) : Bool
