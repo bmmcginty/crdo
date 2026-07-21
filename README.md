@@ -7,6 +7,11 @@ CRDO runs named tasks from a YAML file, keeps lightweight run state between
 process restarts, writes per-command logs, and can reload its config while tasks
 are still running.
 
+## AI
+
+Codex has been used heavily in the refactoring of this tool. Commits using AI
+are denoted with (AI tool name) in the author field.
+
 ## Usage
 
 Create `~/.crdo.yml`, or pass another file:
