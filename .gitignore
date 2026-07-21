@@ -1,4 +1,5 @@
 crdo
+cron_logs/
 bin/
 lib/
 .shards/
