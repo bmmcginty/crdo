@@ -86,7 +86,41 @@ end
 
 record SchedulerEvent,
   kind : SchedulerEventKind,
-  task_stopped : TaskStoppedEvent?
+  task_stopped : TaskStoppedEvent? do
+  def self.timeout
+    new(kind: SchedulerEventKind::Timeout, task_stopped: nil)
+  end
+
+  def self.reload_requested
+    new(kind: SchedulerEventKind::ReloadRequested, task_stopped: nil)
+  end
+
+  def self.save_requested
+    new(kind: SchedulerEventKind::SaveRequested, task_stopped: nil)
+  end
+
+  def self.exit_requested
+    new(kind: SchedulerEventKind::ExitRequested, task_stopped: nil)
+  end
+
+  def self.print_report_requested
+    new(kind: SchedulerEventKind::PrintReportRequested, task_stopped: nil)
+  end
+
+  def self.print_running_report_requested
+    new(kind: SchedulerEventKind::PrintRunningReportRequested, task_stopped: nil)
+  end
+
+  def self.task_stopped(task_state : TaskState, status : Int32, last_command_index : Int32, stop_time : Time)
+    new(
+      kind: SchedulerEventKind::TaskStopped,
+      task_stopped: TaskStoppedEvent.new(
+        task_state: task_state,
+        status: status,
+        last_command_index: last_command_index,
+        stop_time: stop_time))
+  end
+end
 
 def format_time_span(t)
   "#{((t.days * 24) + t.hours).to_s.rjust(2, '0')}:#{t.minutes.to_s.rjust(2, '0')}:#{t.seconds.to_s.rjust(2, '0')}".gsub(/^00?:/, "")

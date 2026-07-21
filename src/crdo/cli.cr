@@ -39,16 +39,16 @@ def main(args = ARGV)
   options = parse_cli(args)
   events = Channel(SchedulerEvent).new
   Signal::HUP.trap do
-    events.send(SchedulerEvent.new(kind: SchedulerEventKind::ReloadRequested, task_stopped: nil))
+    events.send(SchedulerEvent.reload_requested)
   end
   Signal::INT.trap do
-    events.send(SchedulerEvent.new(kind: SchedulerEventKind::ExitRequested, task_stopped: nil))
+    events.send(SchedulerEvent.exit_requested)
   end
   Signal::USR1.trap do
-    events.send(SchedulerEvent.new(kind: SchedulerEventKind::PrintReportRequested, task_stopped: nil))
+    events.send(SchedulerEvent.print_report_requested)
   end
   Signal::USR2.trap do
-    events.send(SchedulerEvent.new(kind: SchedulerEventKind::PrintRunningReportRequested, task_stopped: nil))
+    events.send(SchedulerEvent.print_running_report_requested)
   end
   schedule = ScheduleState.new(test: options.test, immediate: options.immediate, filter: options.filter, crontab: options.crontab)
   puts "crdo running with pid #{Process.pid},#{options.immediate ? " immediate" : ""} #{options.test ? "test" : "normal"} mode"

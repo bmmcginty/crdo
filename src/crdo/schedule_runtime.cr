@@ -82,7 +82,7 @@ class ScheduleRuntime
     when event = events.receive
       event
     when timeout(wait_time)
-      SchedulerEvent.new(kind: SchedulerEventKind::Timeout, task_stopped: nil)
+      SchedulerEvent.timeout
     end
   end
 

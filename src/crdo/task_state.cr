@@ -156,13 +156,11 @@ class TaskState
       end
       break if rc != 0
     end
-    events.send(SchedulerEvent.new(
-      kind: SchedulerEventKind::TaskStopped,
-      task_stopped: TaskStoppedEvent.new(
-        task_state: self,
-        status: rc,
-        last_command_index: last_command,
-        stop_time: clock.now)))
+    events.send(SchedulerEvent.task_stopped(
+      task_state: self,
+      status: rc,
+      last_command_index: last_command,
+      stop_time: clock.now))
   end
 
   def run(args : Array(String), idx : Int32, start_time : Time, test : Bool)
