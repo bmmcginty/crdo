@@ -48,8 +48,8 @@ class ScheduleState
     end
   end
 
-  def load_task_state?
-    store.load_task_state?(self)
+  def restore_state
+    store.restore_state(self)
   end
 
   def save_state
@@ -87,14 +87,14 @@ class ScheduleState
     @reporter.next_task_wait(state, task_wait_state(state))
   end
 
-  def initial_load
+  def load_initial_state
     result = store.initial_load
     @autosave = result.autosave
     @print_report = result.print_report
     @states = result.states
     @deferred_tasks = result.deferred_tasks
     if !@immediate
-      load_task_state?
+      restore_state
     end
     store.reset_dependencies(@states)
   end

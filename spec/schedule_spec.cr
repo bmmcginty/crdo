@@ -226,7 +226,7 @@ describe ScheduleState do
     )
 
     schedule = ScheduleState.new(test: false, immediate: true, filter: Set{"child"}, crontab: path)
-    schedule.initial_load
+    schedule.load_initial_state
 
     schedule.task_wait_state(schedule["child"])[:reason].none?.should be_true
   end
@@ -239,7 +239,7 @@ describe ScheduleState do
     )
 
     schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: path)
-    schedule.initial_load
+    schedule.load_initial_state
     schedule["a"].apply_snapshot(TaskStateSnapshot.new(last_start: Time.local - 1.minute, last_stop: Time.local, last_status: 0))
     schedule.save_state
 
@@ -259,7 +259,7 @@ describe ScheduleState do
     )
 
     reloaded = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: path)
-    reloaded.initial_load
+    reloaded.load_initial_state
     reloaded["a"].last_status.should eq(0)
   end
 
@@ -289,7 +289,7 @@ describe ScheduleState do
     )
 
     schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: path)
-    schedule.initial_load
+    schedule.load_initial_state
 
     schedule["a"].last_status.should eq(-1)
     schedule["a"].last_start.should be_nil
@@ -304,7 +304,7 @@ describe ScheduleState do
     )
 
     schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: path)
-    schedule.initial_load
+    schedule.load_initial_state
     original = schedule["task1"]
     original.started(Time.local)
 
@@ -350,7 +350,7 @@ describe ScheduleState do
     )
     runtime = ScheduleRuntime.new(schedule, clock)
 
-    schedule.initial_load
+    schedule.load_initial_state
     reasons = [schedule.task_wait_state(schedule["a"])]
 
     runtime.next_wake_timeout(reasons).should eq(1.minute)

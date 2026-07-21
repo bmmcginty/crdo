@@ -16,7 +16,7 @@ class ScheduleRuntime
 
   def run(events : Channel(SchedulerEvent)? = nil)
     event_channel = events || Channel(SchedulerEvent).new
-    @schedule.initial_load
+    @schedule.load_initial_state
     reset_autosave_timer
 
     loop do
@@ -28,7 +28,7 @@ class ScheduleRuntime
       end
 
       if @run_state.normal? && @drain_state.none?
-        run_scheduling_pass(event_channel)
+        run_due_tasks(event_channel)
       end
 
       event = wait_for_event(event_channel, @shortest_timeout)
@@ -36,7 +36,7 @@ class ScheduleRuntime
     end
   end
 
-  def run_scheduling_pass(events : Channel(SchedulerEvent))
+  def run_due_tasks(events : Channel(SchedulerEvent))
     pass_time = @clock.now
     reasons = [] of TaskWaitState
     do_filter = @schedule.filter.size > 0
