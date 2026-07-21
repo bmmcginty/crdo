@@ -9,7 +9,7 @@ end
 
 describe TaskState do
   it "marks disabled tasks as disabled" do
-    schedule = Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml")
+    schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml")
     task = load_task(
       "a",
       "every: 1s\ndisabled: true\ncommands:\n  - /bin/true\n"
@@ -20,7 +20,7 @@ describe TaskState do
   end
 
   it "enforces serial groups and exclusive groups" do
-    schedule = Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml")
+    schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml")
     a = TaskState.new(task: load_task("a", "every: 1s\ngroup: g\ncommands:\n  - /bin/true\n"))
     b = TaskState.new(task: load_task("b", "every: 1s\ngroup: g\ncommands:\n  - /bin/true\n"))
     ex = TaskState.new(task: load_task("ex", "every: 1s\ngroup: $exclusive\ncommands:\n  - /bin/true\n"))
@@ -33,7 +33,7 @@ describe TaskState do
   end
 
   it "uses stop time when requested" do
-    schedule = Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml")
+    schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml")
     task = load_task(
       "a",
       "every: 10s\nuse_stop_time: true\ncommands:\n  - /bin/true\n"
@@ -51,7 +51,7 @@ describe TaskState do
 
   it "uses the injected schedule clock for should_run timing" do
     clock = FakeClock.new(Time.local)
-    schedule = Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml", clock: clock)
+    schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml", clock: clock)
     task = load_task(
       "a",
       "every: 10s\ncommands:\n  - /bin/true\n"
@@ -72,7 +72,7 @@ end
 
 describe TaskRunEligibilityEvaluator do
   it "uses the supplied context time for every schedules" do
-    schedule = Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml")
+    schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml")
     state = TaskState.new(task: load_task("a", "every: 10s\ncommands:\n  - /bin/true\n"))
     state.apply_snapshot(
       TaskStateSnapshot.new(
@@ -94,7 +94,7 @@ describe TaskRunEligibilityEvaluator do
   end
 
   it "lets immediate filtered tasks bypass parent gating in pure evaluation" do
-    schedule = Schedule.new(test: false, immediate: true, filter: Set{"child"}, crontab: "/tmp/unused.yml")
+    schedule = ScheduleState.new(test: false, immediate: true, filter: Set{"child"}, crontab: "/tmp/unused.yml")
     state = TaskState.new(task: load_task("child", "every: 1d\nparent: parent\ncommands:\n  - /bin/true\n"))
     state.parent_status["parent"] = false
 
@@ -181,7 +181,7 @@ end
 
 describe ScheduleRuntime do
   it "clears dependency requirements and propagates success to children" do
-    schedule = Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml")
+    schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml")
     parent = TaskState.new(task: load_task("parent", "every: 1d\ncommands:\n  - /bin/true\n"))
     child = TaskState.new(task: load_task("child", "every: 1d\nparent: parent\ncommands:\n  - /bin/true\n"))
 
@@ -200,7 +200,7 @@ describe ScheduleRuntime do
   end
 
   it "treats test+error mode as a failure for dependency propagation" do
-    schedule = Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml")
+    schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml")
     parent = TaskState.new(task: load_task("parent", "every: 1d\ncommands:\n  - /bin/true\n", "workdir: .\ntest: true\nerror: true"))
     child = TaskState.new(task: load_task("child", "every: 1d\nparent: parent\ncommands:\n  - /bin/true\n"))
 
@@ -217,7 +217,7 @@ describe ScheduleRuntime do
   end
 end
 
-describe Schedule do
+describe ScheduleState do
   it "lets --now ignore parent gating for the filtered task" do
     dir = unique_tmpdir("crdo-now")
     path = write_schedule_config(
@@ -225,7 +225,7 @@ describe Schedule do
       "parent:\n  every: 1d\n  commands:\n    - /bin/true\nchild:\n  every: 1d\n  parent: parent\n  commands:\n    - /bin/true\n"
     )
 
-    schedule = Schedule.new(test: false, immediate: true, filter: Set{"child"}, crontab: path)
+    schedule = ScheduleState.new(test: false, immediate: true, filter: Set{"child"}, crontab: path)
     schedule.initial_load
 
     schedule.task_wait_state(schedule["child"])[:reason].none?.should be_true
@@ -238,7 +238,7 @@ describe Schedule do
       "a:\n  every: 1d\n  commands:\n    - /bin/true\n"
     )
 
-    schedule = Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: path)
+    schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: path)
     schedule.initial_load
     schedule["a"].apply_snapshot(TaskStateSnapshot.new(last_start: Time.local - 1.minute, last_stop: Time.local, last_status: 0))
     schedule.save_state
@@ -258,7 +258,7 @@ describe Schedule do
       ].to_json
     )
 
-    reloaded = Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: path)
+    reloaded = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: path)
     reloaded.initial_load
     reloaded["a"].last_status.should eq(0)
   end
@@ -288,7 +288,7 @@ describe Schedule do
       ].to_json
     )
 
-    schedule = Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: path)
+    schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: path)
     schedule.initial_load
 
     schedule["a"].last_status.should eq(-1)
@@ -303,7 +303,7 @@ describe Schedule do
       "task1:\n  every: 1d\n  commands:\n    - /bin/true\n"
     )
 
-    schedule = Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: path)
+    schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: path)
     schedule.initial_load
     original = schedule["task1"]
     original.started(Time.local)
@@ -341,7 +341,7 @@ describe Schedule do
         ],
       }.to_json
     )
-    schedule = Schedule.new(
+    schedule = ScheduleState.new(
       test: false,
       immediate: false,
       filter: Set(String).new,
@@ -359,7 +359,7 @@ end
 
 describe ScheduleReloadPlanner do
   it "plans keep, replace, defer, and removed-running retirement without mutating state" do
-    schedule = Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml")
+    schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml")
 
     unchanged = TaskState.new(task: load_task("same", "every: 1s\ncommands:\n  - /bin/true\n"))
     changed_running = TaskState.new(task: load_task("changed", "every: 1s\ncommands:\n  - /bin/true\n"))
@@ -398,7 +398,7 @@ describe ScheduleReporter do
   it "uses the injected clock when formatting wait times" do
     clock = FakeClock.new(Time.local(2026, 3, 16, 10, 0, 0))
     reporter = ScheduleReporter.new(clock)
-    schedule = Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml", clock: clock)
+    schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml", clock: clock)
     task = load_task("a", "every: 10s\ncommands:\n  - /bin/true\n")
     state = TaskState.new(task: task)
     state.apply_snapshot(

@@ -81,7 +81,7 @@ describe TaskState do
       "workdir: #{dir}\nmail: ops@example.com"
     )
     clock = FakeClock.new(Time.local(2026, 3, 16, 12, 0, 0))
-    schedule = Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml", clock: clock)
+    schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml", clock: clock)
     mailer = RecordingMailer.new
     state = TaskState.new(task: task)
     runtime = ScheduleRuntime.new(schedule, clock, mailer)
@@ -110,7 +110,7 @@ describe TaskState do
       "workdir: #{dir}\nmail: ops@example.com"
     )
     clock = FakeClock.new(Time.local(2026, 3, 16, 12, 0, 0))
-    schedule = Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml", clock: clock)
+    schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml", clock: clock)
     state = TaskState.new(task: task)
     runtime = ScheduleRuntime.new(schedule, clock, FailingMailer.new)
     events = Channel(SchedulerEvent).new(1)
@@ -169,7 +169,7 @@ end
 describe "every with fake clock" do
   it "supports every 1s without waiting on wall clock" do
     clock = FakeClock.new(Time.local(2026, 3, 16, 12, 0, 0))
-    schedule = Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml", clock: clock)
+    schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml", clock: clock)
     state = TaskState.new(task: load_task("a", "every: 1s\ncommands:\n  - /bin/true\n"))
     state.apply_snapshot(TaskStateSnapshot.new(last_start: clock.now, last_stop: nil, last_status: 0))
 
@@ -180,7 +180,7 @@ describe "every with fake clock" do
 
   it "supports every 1m without waiting on wall clock" do
     clock = FakeClock.new(Time.local(2026, 3, 16, 12, 0, 0))
-    schedule = Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml", clock: clock)
+    schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml", clock: clock)
     state = TaskState.new(task: load_task("a", "every: 1m\ncommands:\n  - /bin/true\n"))
     state.apply_snapshot(TaskStateSnapshot.new(last_start: clock.now, last_stop: nil, last_status: 0))
 

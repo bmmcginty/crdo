@@ -1,5 +1,5 @@
 class ScheduleRuntime
-  @schedule : Schedule
+  @schedule : ScheduleState
   @clock : Clock
   @loop_start_time : Time
   @run_state = RuntimeState::Normal
@@ -10,7 +10,7 @@ class ScheduleRuntime
 
   getter shortest_timeout
 
-  def initialize(@schedule : Schedule, @clock : Clock, @mailer : TaskMailer = TaskMailer.new)
+  def initialize(@schedule : ScheduleState, @clock : Clock, @mailer : TaskMailer = TaskMailer.new)
     @loop_start_time = @clock.now
   end
 

@@ -1,4 +1,4 @@
-class Schedule
+class ScheduleState
   @schedule = [] of TaskState
   @test : Bool
   @immediate : Bool
