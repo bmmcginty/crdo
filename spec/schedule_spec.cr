@@ -355,6 +355,37 @@ describe ScheduleState do
 
     runtime.next_wake_timeout(reasons).should eq(1.minute)
   end
+
+  it "lets print_report disable automatic task reports without suppressing explicit reports" do
+    dir = unique_tmpdir("crdo-print-report")
+    path = write_yaml(
+      "#{dir}/root.yml",
+      "global:\n  workdir: .\n  print_report: false\na:\n  every: 1d\n  commands:\n    - /bin/true\n"
+    )
+    clock = FakeClock.new(Time.local(2026, 3, 16, 12, 0, 0))
+    output = IO::Memory.new
+    schedule = ScheduleState.new(
+      test: false,
+      immediate: false,
+      filter: Set(String).new,
+      crontab: path,
+      clock: clock,
+      output: output
+    )
+    schedule.load_initial_state
+    schedule["a"].started(clock.now - 1.second)
+
+    ScheduleRuntime.new(schedule, clock).handle_task_stopped(
+      TaskStoppedEvent.new(
+        task_state: schedule["a"],
+        status: 0,
+        last_command_index: 0,
+        stop_time: clock.now))
+
+    output.to_s.should eq("")
+    schedule.print_report
+    output.to_s.should contain("as of 2026-03-16 12:00:00")
+  end
 end
 
 describe ScheduleReloadPlanner do

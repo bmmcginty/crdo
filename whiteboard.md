@@ -10,7 +10,7 @@ ScheduleRuntime
   owns the event loop
   owns task start/stop dispatch
   owns autosave timing
-  owns drain/exit behavior
+  owns runtime mode: normal, exiting, done
   owns reload/save/report requests
 
 ScheduleState
@@ -45,13 +45,13 @@ set next autosave time
 
 loop
   save state if autosave is due
-  update drain state
+  update runtime mode
 
   if exit requested and no tasks are running
     save state
     return
 
-  if normal and not draining
+  if normal
     run due tasks
     record wait reasons
     compute next wake timeout
@@ -72,11 +72,11 @@ loop
   when SaveRequested
     save state
   when PrintReportRequested
-    print schedule report
+    always print schedule report
   when PrintRunningReportRequested
     print running task report
   when ExitRequested
-    enter draining mode
+    enter exiting mode
   end
 end
 ```
@@ -102,6 +102,16 @@ task command fiber
   stop at first non-zero rc
   write command logs and rc files
   send TaskStoppedEvent
+```
+
+## Reports
+
+```text
+global.print_report
+  controls automatic task start/stop report lines
+
+USR1 / PrintReportRequested
+  always prints the full schedule report
 ```
 
 ## Reload

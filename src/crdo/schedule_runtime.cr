@@ -70,7 +70,7 @@ class ScheduleRuntime
   private def start_task(task_state : TaskState, events : Channel(SchedulerEvent))
     start_time = @clock.now
     task_state.started(start_time)
-    @schedule.reporter.started(task_state, start_time)
+    @schedule.reporter.started(task_state, start_time) if @schedule.automatic_reports?
     spawn do
       task_state.run(start_time, events, @schedule.test, @clock)
     end
@@ -125,7 +125,7 @@ class ScheduleRuntime
       run_error_command(task_state.task)
       notify_failure(task_state)
     end
-    @schedule.reporter.stopped(task_state, event.status, @schedule.next_task_wait(task_state))
+    @schedule.reporter.stopped(task_state, event.status, @schedule.next_task_wait(task_state)) if @schedule.automatic_reports?
     if task_state.retiring && !task_state.running?
       @schedule.remove_task(task_state)
       @schedule.promote_deferred_replacement(task_state.task.name, task_state.state_snapshot)

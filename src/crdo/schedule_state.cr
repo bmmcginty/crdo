@@ -116,6 +116,10 @@ class ScheduleState
     @reporter.print_report(@reasons, @mail_failures)
   end
 
+  def automatic_reports?
+    @print_report
+  end
+
   def apply_pass_result(pass_time : Time, reasons : Array(TaskRunDecision))
     @reasons = reasons
     @previous_now = pass_time
