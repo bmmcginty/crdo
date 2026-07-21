@@ -1,5 +1,5 @@
 class ScheduleState
-  @schedule = [] of TaskState
+  @states = [] of TaskState
   @test : Bool
   @immediate : Bool
   @filter : Set(String)
@@ -15,7 +15,7 @@ class ScheduleState
   @reporter : ScheduleReporter
   @mail_failures = [] of MailFailure
 
-  delegate :select, to: @schedule
+  delegate :select, to: @states
   getter immediate, filter, clock, previous_now, autosave, reporter, mail_failures
 
   def initialize(@test, @immediate, @filter, @crontab, @clock : Clock = SystemClock.new, output : IO = STDOUT)
@@ -27,24 +27,24 @@ class ScheduleState
   end
 
   def [](name : String)
-    @schedule.find! { |i| i.task.name == name }
+    @states.find! { |i| i.task.name == name }
   end
 
   def []?(name : String)
-    @schedule.find { |i| i.task.name == name }
+    @states.find { |i| i.task.name == name }
   end
 
   def running
-    @schedule.select(&.running?)
+    @states.select(&.running?)
   end
 
   def states
-    @schedule
+    @states
   end
 
   def add_tasks(tasks)
     tasks.each do |t|
-      @schedule << TaskState.new(task: t)
+      @states << TaskState.new(task: t)
     end
   end
 
@@ -53,7 +53,7 @@ class ScheduleState
   end
 
   def save_state
-    store.save(@schedule)
+    store.save(@states)
   end
 
   def promote_deferred_replacement(name, snapshot)
@@ -61,11 +61,11 @@ class ScheduleState
     return unless next_task
     next_state = TaskState.new(task: next_task)
     next_state.apply_snapshot(snapshot)
-    @schedule << next_state
+    @states << next_state
   end
 
   def remove_task(task_state : TaskState)
-    @schedule.delete(task_state)
+    @states.delete(task_state)
   end
 
   def has_deferred_replacement?(name : String)
@@ -88,28 +88,28 @@ class ScheduleState
   end
 
   def initial_load
-    result = store.load(true, @schedule)
+    result = store.load(true, @states)
     @autosave = result.autosave
     @print_report = result.print_report
-    @schedule = result.states
+    @states = result.states
     @deferred_tasks = result.deferred_tasks
     if !@immediate
       load_task_state?
     end
-    store.reset_dependencies(@schedule)
+    store.reset_dependencies(@states)
   end
 
   def reload_config
-    result = store.load(false, @schedule)
+    result = store.load(false, @states)
     @autosave = result.autosave
     @print_report = result.print_report
-    @schedule = result.states
+    @states = result.states
     @deferred_tasks = result.deferred_tasks
-    store.reset_dependencies(@schedule)
+    store.reset_dependencies(@states)
   end
 
   def print_running_report
-    @reporter.print_running_report(@schedule)
+    @reporter.print_running_report(@states)
   end
 
   def print_report
