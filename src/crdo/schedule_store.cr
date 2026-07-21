@@ -57,7 +57,7 @@ class ScheduleReloadPlanner
   end
 end
 
-class ScheduleConfigState
+class ScheduleStore
   @schedule : ScheduleState
   @crontab_path : String
 

@@ -11,7 +11,7 @@ class ScheduleState
   @reasons = [] of TaskWaitState
   @deferred_tasks = Hash(String, Task).new
   @previous_now : Time? = nil
-  @config_state : ScheduleConfigState? = nil
+  @store : ScheduleStore? = nil
   @reporter : ScheduleReporter
   @mail_failures = [] of MailFailure
 
@@ -22,8 +22,8 @@ class ScheduleState
     @reporter = ScheduleReporter.new(@clock)
   end
 
-  private def config_state : ScheduleConfigState
-    @config_state ||= ScheduleConfigState.new(self, @crontab)
+  private def store : ScheduleStore
+    @store ||= ScheduleStore.new(self, @crontab)
   end
 
   def [](name : String)
@@ -49,11 +49,11 @@ class ScheduleState
   end
 
   def load_task_state?
-    config_state.load_task_state?(self)
+    store.load_task_state?(self)
   end
 
   def save_state
-    config_state.save(@schedule)
+    store.save(@schedule)
   end
 
   def promote_deferred_replacement(name, snapshot)
@@ -88,7 +88,7 @@ class ScheduleState
   end
 
   def initial_load
-    result = config_state.load(true, @schedule)
+    result = store.load(true, @schedule)
     @autosave = result.autosave
     @print_report = result.print_report
     @schedule = result.states
@@ -96,16 +96,16 @@ class ScheduleState
     if !@immediate
       load_task_state?
     end
-    config_state.reset_dependencies(@schedule)
+    store.reset_dependencies(@schedule)
   end
 
   def reload_config
-    result = config_state.load(false, @schedule)
+    result = store.load(false, @schedule)
     @autosave = result.autosave
     @print_report = result.print_report
     @schedule = result.states
     @deferred_tasks = result.deferred_tasks
-    config_state.reset_dependencies(@schedule)
+    store.reset_dependencies(@schedule)
   end
 
   def print_running_report
