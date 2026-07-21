@@ -81,7 +81,7 @@ describe TaskState do
       "workdir: #{dir}\nmail: ops@example.com"
     )
     clock = FakeClock.new(Time.local(2026, 3, 16, 12, 0, 0))
-    schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml", clock: clock)
+    schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml", clock: clock, output: IO::Memory.new)
     mailer = RecordingMailer.new
     state = TaskState.new(task: task)
     runtime = ScheduleRuntime.new(schedule, clock, mailer)
@@ -110,7 +110,7 @@ describe TaskState do
       "workdir: #{dir}\nmail: ops@example.com"
     )
     clock = FakeClock.new(Time.local(2026, 3, 16, 12, 0, 0))
-    schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml", clock: clock)
+    schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml", clock: clock, output: IO::Memory.new)
     state = TaskState.new(task: task)
     runtime = ScheduleRuntime.new(schedule, clock, FailingMailer.new)
     events = Channel(SchedulerEvent).new(1)

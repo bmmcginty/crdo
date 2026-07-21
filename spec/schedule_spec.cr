@@ -9,7 +9,7 @@ end
 
 describe TaskState do
   it "marks disabled tasks as disabled" do
-    schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml")
+    schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml", output: IO::Memory.new)
     task = load_task(
       "a",
       "every: 1s\ndisabled: true\ncommands:\n  - /bin/true\n"
@@ -20,7 +20,7 @@ describe TaskState do
   end
 
   it "enforces serial groups and exclusive groups" do
-    schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml")
+    schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml", output: IO::Memory.new)
     a = TaskState.new(task: load_task("a", "every: 1s\ngroup: g\ncommands:\n  - /bin/true\n"))
     b = TaskState.new(task: load_task("b", "every: 1s\ngroup: g\ncommands:\n  - /bin/true\n"))
     ex = TaskState.new(task: load_task("ex", "every: 1s\ngroup: $exclusive\ncommands:\n  - /bin/true\n"))
@@ -33,7 +33,7 @@ describe TaskState do
   end
 
   it "uses stop time when requested" do
-    schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml")
+    schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml", output: IO::Memory.new)
     task = load_task(
       "a",
       "every: 10s\nuse_stop_time: true\ncommands:\n  - /bin/true\n"
@@ -72,7 +72,7 @@ end
 
 describe TaskRunEligibilityEvaluator do
   it "uses the supplied context time for every schedules" do
-    schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml")
+    schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml", output: IO::Memory.new)
     state = TaskState.new(task: load_task("a", "every: 10s\ncommands:\n  - /bin/true\n"))
     state.apply_snapshot(
       TaskStateSnapshot.new(
@@ -181,7 +181,7 @@ end
 
 describe ScheduleRuntime do
   it "clears dependency requirements and propagates success to children" do
-    schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml")
+    schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml", output: IO::Memory.new)
     parent = TaskState.new(task: load_task("parent", "every: 1d\ncommands:\n  - /bin/true\n"))
     child = TaskState.new(task: load_task("child", "every: 1d\nparent: parent\ncommands:\n  - /bin/true\n"))
 
@@ -200,7 +200,7 @@ describe ScheduleRuntime do
   end
 
   it "treats test+error mode as a failure for dependency propagation" do
-    schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml")
+    schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml", output: IO::Memory.new)
     parent = TaskState.new(task: load_task("parent", "every: 1d\ncommands:\n  - /bin/true\n", "workdir: .\ntest: true\nerror: true"))
     child = TaskState.new(task: load_task("child", "every: 1d\nparent: parent\ncommands:\n  - /bin/true\n"))
 

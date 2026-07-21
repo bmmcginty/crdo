@@ -18,8 +18,8 @@ class ScheduleState
   delegate :select, to: @schedule
   getter immediate, filter, clock, previous_now, autosave, reporter, mail_failures
 
-  def initialize(@test, @immediate, @filter, @crontab, @clock : Clock = SystemClock.new)
-    @reporter = ScheduleReporter.new(@clock)
+  def initialize(@test, @immediate, @filter, @crontab, @clock : Clock = SystemClock.new, output : IO = STDOUT)
+    @reporter = ScheduleReporter.new(@clock, output)
   end
 
   private def store : ScheduleStore
