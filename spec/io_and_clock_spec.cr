@@ -70,6 +70,24 @@ describe TaskProcessRunner do
     JSON.parse(File.read("#{log_dir}/0.cmdline")).as_a.map(&.as_s).should eq(["echo", "/bin/echo", "hello"])
     File.read("#{log_dir}/0.stdout").should contain("/bin/echo hello")
   end
+
+  it "terminates commands that exceed their timeout" do
+    dir = unique_tmpdir("crdo-runner-timeout")
+    task = load_task(
+      "a",
+      "every: 1s\ntimeout: 1s\ncommands:\n  - /bin/sleep 5\n",
+      "workdir: #{dir}"
+    )
+    runner = TaskProcessRunner.new
+    start_time = Time.local(2026, 3, 16, 12, 0, 2)
+
+    rc = runner.run(task, ["/bin/sleep", "5"], 0, start_time, false, task.timeout)
+
+    rc.should eq(TaskProcessRunner::TIMEOUT_EXIT_CODE)
+    log_dir = runner.log_dn(task, start_time)
+    File.read("#{log_dir}/0.rc").should eq("#{TaskProcessRunner::TIMEOUT_EXIT_CODE}\n")
+    File.read("#{log_dir}/0.stderr").should contain("crdo: command timed out after")
+  end
 end
 
 describe TaskState do

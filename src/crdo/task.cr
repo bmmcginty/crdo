@@ -9,10 +9,11 @@ class Task
   @group : String? = nil
   @parent : String? = nil
   @when_policy : WhenPolicy? = nil
+  @timeout : Time::Span? = nil
   @global : GlobalConfig
   @disabled = false
   @use_stop_time = false
-  getter name, every, group, parent, use_stop_time, commands, global, disabled, error_body, error_command, vars, when_policy
+  getter name, every, group, parent, use_stop_time, commands, global, disabled, error_body, error_command, vars, when_policy, timeout
 
   def when_specs
     @when
@@ -20,24 +21,25 @@ class Task
 
   def signature
     {
-      name: @name,
-      commands: @commands,
-      vars: @vars.to_a.sort_by(&.[0]),
-      error_body: @error_body,
-      error_command: @error_command,
-      when: @when.map(&.signature).sort,
-      every_seconds: @every.try(&.total_seconds),
-      when_policy: @when_policy,
-      group: @group,
-      parent: @parent,
-      disabled: @disabled,
-      use_stop_time: @use_stop_time,
-      global: {
-        workdir: @global.workdir,
-        mail: @global.mail,
+      name:            @name,
+      commands:        @commands,
+      vars:            @vars.to_a.sort_by(&.[0]),
+      error_body:      @error_body,
+      error_command:   @error_command,
+      when:            @when.map(&.signature).sort,
+      every_seconds:   @every.try(&.total_seconds),
+      when_policy:     @when_policy,
+      timeout_seconds: @timeout.try(&.total_seconds),
+      group:           @group,
+      parent:          @parent,
+      disabled:        @disabled,
+      use_stop_time:   @use_stop_time,
+      global:          {
+        workdir:         @global.workdir,
+        mail:            @global.mail,
         ignore_overtime: @global.ignore_overtime,
-        error: @global.error,
-        test: @global.test,
+        error:           @global.error,
+        test:            @global.test,
       },
     }.to_json
   end
@@ -55,6 +57,8 @@ class Task
         end
       when "when_policy"
         @when_policy = parse_when_policy(v)
+      when "timeout"
+        @timeout = parse_time_span(v.as_s)
       when "error_body"
         @error_body = v.as_s
       when "error_command"

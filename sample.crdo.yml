@@ -87,6 +87,9 @@ job6:
     - /usr/bin/echo job6 done
 job7:
   every: 10s
+  # interval
+  # if set, the whole task is failed after this much wall-clock runtime
+  timeout: 30s
   # task will sleep 10s before resuming
   use_stop_time: true
   commands:

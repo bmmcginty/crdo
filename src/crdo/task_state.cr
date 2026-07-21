@@ -145,11 +145,12 @@ class TaskState
     @errors.clear
     last_command = -1
     rc = 0
+    deadline = @task.timeout.try { |timeout| Time.instant + timeout }
     @task.commands.each_with_index do |c, idx|
       last_command += 1
       t = @task.hydrate_command(c)
       begin
-        rc = run(args: t, idx: idx, start_time: start_time, test: test)
+        rc = run(args: t, idx: idx, start_time: start_time, test: test, timeout: remaining_timeout(deadline))
       rescue exc
         rc = 999
         @errors << exc
@@ -163,13 +164,20 @@ class TaskState
       stop_time: clock.now))
   end
 
-  def run(args : Array(String), idx : Int32, start_time : Time, test : Bool)
+  def run(args : Array(String), idx : Int32, start_time : Time, test : Bool, timeout : Time::Span? = nil)
     begin
-      ret = @process_runner.run(@task, args, idx, start_time, test)
+      ret = @process_runner.run(@task, args, idx, start_time, test, timeout)
     rescue e
       @errors << e
       raise e
     end
     ret
+  end
+
+  private def remaining_timeout(deadline : Time::Instant?)
+    return nil unless deadline
+
+    remaining = deadline.not_nil! - Time.instant
+    remaining > 0.seconds ? remaining : 0.seconds
   end
 end

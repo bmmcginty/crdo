@@ -59,6 +59,15 @@ describe Task do
     task.error_command.should eq("/bin/true")
   end
 
+  it "parses task timeout" do
+    task = load_task(
+      "a",
+      "every: 1s\ntimeout: 5m\ncommands:\n  - /bin/true\n"
+    )
+
+    task.timeout.should eq(5.minutes)
+  end
+
   it "parses when_policy from true or mapping form" do
     task = load_task(
       "a",

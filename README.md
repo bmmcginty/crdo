@@ -92,6 +92,7 @@ Each task is keyed by name:
 ```yaml
 backup:
   every: 1h
+  timeout: 30m
   group: $exclusive
   vars:
     target: /srv/backup
@@ -106,6 +107,7 @@ Task keys:
 
 * `commands`: required array of commands. Commands are executed directly, not through a shell, unless you explicitly use `/bin/sh -c`.
 * `every`: interval schedule. Supports `s`, `m`, `h`, and `d`.
+* `timeout`: optional maximum wall-clock runtime for the whole task. Supports `s`, `m`, `h`, and `d`.
 * `when`: wall-clock schedule such as `13:00`, `mon 08:30`, `jan 1 00:00`, or comma lists like `mon,wed,fri 02:00`.
 * `when_policy`: optional policy for missed/repeated wall-clock slots.
 * `use_stop_time`: with `every`, measure the next run from the prior stop time instead of start time.
@@ -181,7 +183,6 @@ tasks become eligible.
 
 ## Possible Future Work
 
-* Task-level timeout.
 * Retry-after-error delay.
 * Randomized start delay.
 * Configurable shutdown grace period before killing running tasks.
