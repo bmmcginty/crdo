@@ -13,11 +13,11 @@ struct TimeMatcher
 
   def signature
     {
-      month: @month,
+      month:     @month,
       month_day: @month_day,
-      weekday: @weekday,
-      hour: @hour,
-      minute: @minute,
+      weekday:   @weekday,
+      hour:      @hour,
+      minute:    @minute,
     }.to_json
   end
 
@@ -61,12 +61,31 @@ struct TimeMatcher
   end
 
   def find_next(t)
+    return find_next_day(t) if day_granularity?
+
+    find_next_interval(t)
+  end
+
+  private def day_granularity?
+    @minute.nil? && @hour.nil?
+  end
+
+  private def find_next_interval(t)
     interval = get_interval
     t += interval
     while !match(t)
       t += interval
     end
     truncate(t)
+  end
+
+  private def find_next_day(t)
+    day = t.at_beginning_of_day.shift(days: 1)
+    loop do
+      candidate = Time.local(day.year, day.month, day.day, 0, 0, 0, location: t.location)
+      return candidate if match(candidate)
+      day = day.shift(days: 1)
+    end
   end
 
   def match(t : Time)

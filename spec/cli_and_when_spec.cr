@@ -36,4 +36,20 @@ describe "parse_when" do
 
     task.when_specs.size.should eq(2)
   end
+
+  it "finds day-granularity weekday schedules across spring DST without drift" do
+    location = Time::Location.load("America/New_York")
+    matcher = parse_when("mon").first
+    before_spring_forward = Time.local(2026, 3, 7, 12, 0, 0, location: location)
+
+    matcher.find_next(before_spring_forward).should eq(Time.local(2026, 3, 9, 0, 0, 0, location: location))
+  end
+
+  it "finds day-granularity weekday schedules across fall DST without drift" do
+    location = Time::Location.load("America/New_York")
+    matcher = parse_when("mon").first
+    before_fall_back = Time.local(2026, 10, 31, 12, 0, 0, location: location)
+
+    matcher.find_next(before_fall_back).should eq(Time.local(2026, 11, 2, 0, 0, 0, location: location))
+  end
 end
