@@ -72,7 +72,7 @@ class TaskState
   def to_json(json : JSON::Builder)
     json.object do
       json.field "name", @task.name
-      json.field "last_status", @last_status
+      json.field "last_status", (@last_start ? @last_status : nil)
       json.field "last_stop_ms", (@last_stop ? @last_stop.not_nil!.to_utc.to_unix_ms : nil)
       json.field "last_start_ms", (@last_start ? @last_start.not_nil!.to_utc.to_unix_ms : nil)
     end

@@ -296,6 +296,23 @@ describe ScheduleState do
     schedule["a"].last_stop.should be_nil
   end
 
+  it "writes nil status for never-run tasks" do
+    dir = unique_tmpdir("crdo-state-empty")
+    path = write_schedule_config(
+      "#{dir}/root.yml",
+      "a:\n  every: 1d\n  commands:\n    - /bin/true\n"
+    )
+
+    schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: path)
+    schedule.load_initial_state
+    schedule.save_state
+
+    saved_task = JSON.parse(File.read("#{path}.state"))["tasks"].as_a.first
+    saved_task["last_status"].raw.should be_nil
+    saved_task["last_start_ms"].raw.should be_nil
+    saved_task["last_stop_ms"].raw.should be_nil
+  end
+
   it "keeps unchanged running tasks during reload and loads new unrelated tasks" do
     dir = unique_tmpdir("crdo-reload")
     path = write_schedule_config(
