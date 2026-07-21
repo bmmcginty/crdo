@@ -2,8 +2,7 @@ class ScheduleRuntime
   @schedule : ScheduleState
   @clock : Clock
   @loop_start_time : Time
-  @run_state = RuntimeState::Normal
-  @drain_state = DrainState::None
+  @mode = RuntimeMode::Normal
   @shortest_timeout : Time::Span = 1.hour
   @next_autosave_at : Time? = nil
   @mailer : TaskMailer
@@ -21,13 +20,13 @@ class ScheduleRuntime
 
     loop do
       save_if_autosave_due
-      update_drain_state
+      update_runtime_mode
       if should_exit?
         @schedule.save_state unless @schedule.immediate
         return
       end
 
-      if @run_state.normal? && @drain_state.none?
+      if @mode.normal?
         run_due_tasks(event_channel)
       end
 
@@ -96,24 +95,23 @@ class ScheduleRuntime
       @schedule.reload_config
       reset_autosave_timer
     when .save_requested?
-      return invalid_transition(event.kind) unless @run_state.normal?
+      return invalid_transition(event.kind) unless @mode.normal?
       @schedule.save_state
     when .print_report_requested?
       @schedule.print_report
     when .print_running_report_requested?
       @schedule.print_running_report
     when .exit_requested?
-      return invalid_transition(event.kind) unless @run_state.normal?
-      @run_state = RuntimeState::Exit
-      @drain_state = DrainState::Draining
-      @schedule.reporter.run_state_changed(@run_state)
+      return invalid_transition(event.kind) unless @mode.normal?
+      @mode = RuntimeMode::Exiting
+      @schedule.reporter.run_state_changed(@mode)
     when .timeout?
     end
     false
   end
 
   private def invalid_transition(requested : SchedulerEventKind) : Bool
-    @schedule.reporter.invalid_transition(requested, @run_state, @drain_state)
+    @schedule.reporter.invalid_transition(requested, @mode)
     false
   end
 
@@ -190,14 +188,14 @@ class ScheduleRuntime
     reset_autosave_timer
   end
 
-  private def update_drain_state
-    if @drain_state.draining? && @schedule.running.size == 0
-      @drain_state = DrainState::Drained
+  private def update_runtime_mode
+    if @mode.exiting? && @schedule.running.size == 0
+      @mode = RuntimeMode::Done
     end
   end
 
   private def should_exit?
-    @drain_state.drained? && @run_state.exit?
+    @mode.done?
   end
 
   private def all_tasks_have_run_once_since?(task_states : Array(TaskState), filter : Set(String), start_time : Time) : Bool

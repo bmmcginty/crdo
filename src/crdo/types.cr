@@ -58,12 +58,6 @@ struct WhenPolicy
   end
 end
 
-enum DrainState
-  None
-  Draining
-  Drained
-end
-
 enum WaitReason
   None
   AlreadyRunning
@@ -74,9 +68,10 @@ enum WaitReason
   Disabled
 end
 
-enum RuntimeState
+enum RuntimeMode
   Normal
-  Exit
+  Exiting
+  Done
 end
 
 enum SchedulerEventKind

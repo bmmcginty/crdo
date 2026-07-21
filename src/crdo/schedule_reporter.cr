@@ -52,11 +52,11 @@ class ScheduleReporter
     @output.puts "stop #{task.task.name} rc=#{status} duration=#{format_time_span(duration)} next=#{next_wait}"
   end
 
-  def run_state_changed(run_state : RuntimeState)
-    @output.puts "run state #{run_state}"
+  def run_state_changed(mode : RuntimeMode)
+    @output.puts "run state #{mode}"
   end
 
-  def invalid_transition(requested : SchedulerEventKind, current : RuntimeState, drain_state : DrainState)
-    @output.puts "requested run state #{requested} but currently have run state #{current} drain state #{drain_state}"
+  def invalid_transition(requested : SchedulerEventKind, current : RuntimeMode)
+    @output.puts "requested run state #{requested} but currently have runtime mode #{current}"
   end
 end
