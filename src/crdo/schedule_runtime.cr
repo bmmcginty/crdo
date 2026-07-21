@@ -82,14 +82,14 @@ class ScheduleRuntime
     when event = events.receive
       event
     when timeout(wait_time)
-      SchedulerEvent.new(kind: SchedulerEventKind::Timeout, task_event: nil)
+      SchedulerEvent.new(kind: SchedulerEventKind::Timeout, task_stopped: nil)
     end
   end
 
   private def handle_event(event : SchedulerEvent) : Bool
     case event.kind
     when .task_stopped?
-      stopped(event.task_event.not_nil!)
+      stopped(event.task_stopped.not_nil!)
       return @schedule.immediate && all_tasks_have_run_once_since?(@schedule.states, @schedule.filter, @loop_start_time)
     when .reload_requested?
       @schedule.reload_config
@@ -116,10 +116,10 @@ class ScheduleRuntime
     false
   end
 
-  private def stopped(event : TaskEvent)
-    task_state = event[0]
-    task_state.stopped(status: event[1], last_command_index: event[2], stop_time: event[3])
-    @schedule.reporter.stopped(task_state, event[1], @schedule.next_task_wait(task_state))
+  private def stopped(event : TaskStoppedEvent)
+    task_state = event.task_state
+    task_state.stopped(status: event.status, last_command_index: event.last_command_index, stop_time: event.stop_time)
+    @schedule.reporter.stopped(task_state, event.status, @schedule.next_task_wait(task_state))
     if task_state.retiring && !task_state.running?
       @schedule.remove_task(task_state)
       @schedule.promote_deferred_replacement(task_state.task.name, task_state.state_snapshot)

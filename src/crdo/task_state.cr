@@ -163,7 +163,11 @@ class TaskState
     end
     events.send(SchedulerEvent.new(
       kind: SchedulerEventKind::TaskStopped,
-      task_event: {self, rc, last_command, @schedule.clock.now}))
+      task_stopped: TaskStoppedEvent.new(
+        task_state: self,
+        status: rc,
+        last_command_index: last_command,
+        stop_time: @schedule.clock.now)))
   end
 
   def run(args : Array(String), idx : Int32, start_time : Time)

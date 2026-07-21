@@ -19,7 +19,11 @@ record TaskStateSnapshot,
   last_stop : Time?,
   last_status : Int32
 
-alias TaskEvent = Tuple(TaskState, Int32, Int32, Time)
+record TaskStoppedEvent,
+  task_state : TaskState,
+  status : Int32,
+  last_command_index : Int32,
+  stop_time : Time
 
 record MailDeliveryResult,
   success : Bool,
@@ -87,7 +91,7 @@ end
 
 record SchedulerEvent,
   kind : SchedulerEventKind,
-  task_event : TaskEvent?
+  task_stopped : TaskStoppedEvent?
 
 def format_time_span(t)
   "#{((t.days * 24) + t.hours).to_s.rjust(2, '0')}:#{t.minutes.to_s.rjust(2, '0')}:#{t.seconds.to_s.rjust(2, '0')}".gsub(/^00?:/, "")
