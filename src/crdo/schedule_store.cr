@@ -115,19 +115,22 @@ class ScheduleStore
       dest)
   end
 
-  def load(initial : Bool, current_task_states : Array(TaskState)) : ScheduleLoadResult
+  def initial_load : ScheduleLoadResult
     crontab = Crontab.new(@crontab_path)
     crontab.verify
 
-    if initial
-      task_states = crontab.tasks.map { |task| TaskState.new(task: task) }
-      task_states.sort_by! { |state| (state.task.group == "$exclusive" ? 0 : 1) }
-      return ScheduleLoadResult.new(
-        states: task_states,
-        deferred_tasks: Hash(String, Task).new,
-        autosave: crontab.global.autosave,
-        print_report: crontab.global.print_report)
-    end
+    task_states = crontab.tasks.map { |task| TaskState.new(task: task) }
+    task_states.sort_by! { |state| (state.task.group == "$exclusive" ? 0 : 1) }
+    ScheduleLoadResult.new(
+      states: task_states,
+      deferred_tasks: Hash(String, Task).new,
+      autosave: crontab.global.autosave,
+      print_report: crontab.global.print_report)
+  end
+
+  def reload(current_task_states : Array(TaskState)) : ScheduleLoadResult
+    crontab = Crontab.new(@crontab_path)
+    crontab.verify
 
     plan = ScheduleReloadPlanner.new(current_task_states, crontab.tasks).plan
     retained = [] of TaskState

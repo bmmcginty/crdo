@@ -88,7 +88,7 @@ class ScheduleState
   end
 
   def initial_load
-    result = store.load(true, @states)
+    result = store.initial_load
     @autosave = result.autosave
     @print_report = result.print_report
     @states = result.states
@@ -100,7 +100,7 @@ class ScheduleState
   end
 
   def reload_config
-    result = store.load(false, @states)
+    result = store.reload(@states)
     @autosave = result.autosave
     @print_report = result.print_report
     @states = result.states
