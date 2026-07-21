@@ -6,10 +6,11 @@ class ScheduleRuntime
   @drain_state = DrainState::None
   @shortest_timeout : Time::Span = 1.hour
   @next_autosave_at : Time? = nil
+  @mailer : TaskMailer
 
   getter shortest_timeout
 
-  def initialize(@schedule : Schedule, @clock : Clock)
+  def initialize(@schedule : Schedule, @clock : Clock, @mailer : TaskMailer = TaskMailer.new)
     @loop_start_time = @clock.now
   end
 
@@ -89,7 +90,7 @@ class ScheduleRuntime
   private def handle_event(event : SchedulerEvent) : Bool
     case event.kind
     when .task_stopped?
-      stopped(event.task_stopped.not_nil!)
+      handle_task_stopped(event.task_stopped.not_nil!)
       return @schedule.immediate && all_tasks_have_run_once_since?(@schedule.states, @schedule.filter, @loop_start_time)
     when .reload_requested?
       @schedule.reload_config
@@ -116,9 +117,16 @@ class ScheduleRuntime
     false
   end
 
-  private def stopped(event : TaskStoppedEvent)
+  def handle_task_stopped(event : TaskStoppedEvent)
     task_state = event.task_state
-    task_state.stopped(status: event.status, last_command_index: event.last_command_index, stop_time: event.stop_time)
+    task_state.mark_stopped(status: event.status, stop_time: event.stop_time)
+    clear_parent_requirements(task_state)
+    if task_success?(task_state)
+      propagate_success(task_state)
+    else
+      run_error_command(task_state.task)
+      notify_failure(task_state)
+    end
     @schedule.reporter.stopped(task_state, event.status, @schedule.next_task_wait(task_state))
     if task_state.retiring && !task_state.running?
       @schedule.remove_task(task_state)
@@ -126,6 +134,48 @@ class ScheduleRuntime
     elsif @schedule.has_deferred_replacement?(task_state.task.name)
       @schedule.promote_deferred_replacement(task_state.task.name, task_state.state_snapshot)
     end
+  end
+
+  private def task_success?(task_state : TaskState)
+    success = task_state.success?
+    if task_state.task.global.test && task_state.task.global.error
+      success = false
+    end
+    success
+  end
+
+  private def clear_parent_requirements(task_state : TaskState)
+    task_state.parent_status.keys.each do |name|
+      task_state.parent_status[name] = false
+    end
+  end
+
+  private def propagate_success(task_state : TaskState)
+    children = @schedule.states.select { |state| state.task.parent == task_state.task.name }
+    children.each do |child|
+      child.parent_status[task_state.task.name] = true
+    end
+  end
+
+  private def run_error_command(task : Task)
+    return unless task.error_command
+
+    spawn do
+      command = task.hydrate_command(task.error_command.not_nil!)
+      Process.run(command: command[0], args: command[1..-1], chdir: task.global.workdir)
+    end
+    sleep 0.seconds
+  end
+
+  private def notify_failure(task_state : TaskState)
+    return unless task_state.task.global.mail
+
+    log_dir = task_state.log_dn(task_state.last_start.as(Time))
+    result = @mailer.notify_failure(task_state.task, task_state.last_status, log_dir)
+    return if result.success
+
+    File.write("#{log_dir}/mailfail", "#{result.message}\n")
+    @schedule.record_mail_failure(task_state.task.name, log_dir, result.message)
   end
 
   private def reset_autosave_timer

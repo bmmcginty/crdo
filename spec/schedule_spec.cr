@@ -206,7 +206,7 @@ describe "when_policy" do
   end
 end
 
-describe TaskStopHandler do
+describe ScheduleRuntime do
   it "clears dependency requirements and propagates success to children" do
     schedule = Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml")
     parent = TaskState.new(
@@ -221,7 +221,12 @@ describe TaskStopHandler do
     schedule.add_tasks([parent.task, child.task])
     schedule["parent"].parent_status["upstream"] = true
     schedule["parent"].started(Time.local - 1.second)
-    schedule["parent"].stopped(status: 0, last_command_index: 0, stop_time: Time.local)
+    ScheduleRuntime.new(schedule, schedule.clock).handle_task_stopped(
+      TaskStoppedEvent.new(
+        task_state: schedule["parent"],
+        status: 0,
+        last_command_index: 0,
+        stop_time: Time.local))
 
     schedule["parent"].parent_status["upstream"].should be_false
     schedule["child"].parent_status["parent"].should be_true
@@ -240,7 +245,12 @@ describe TaskStopHandler do
 
     schedule.add_tasks([parent.task, child.task])
     schedule["parent"].started(Time.local - 1.second)
-    schedule["parent"].stopped(status: 0, last_command_index: 0, stop_time: Time.local)
+    ScheduleRuntime.new(schedule, schedule.clock).handle_task_stopped(
+      TaskStoppedEvent.new(
+        task_state: schedule["parent"],
+        status: 0,
+        last_command_index: 0,
+        stop_time: Time.local))
 
     schedule["child"].parent_status["parent"]?.should_not eq(true)
   end

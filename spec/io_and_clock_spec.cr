@@ -85,16 +85,16 @@ describe TaskState do
     mailer = RecordingMailer.new
     state = TaskState.new(
       task: task,
-      schedule: schedule,
-      stop_handler: TaskStopHandler.new(mailer)
+      schedule: schedule
     )
+    runtime = ScheduleRuntime.new(schedule, clock, mailer)
     events = Channel(SchedulerEvent).new(1)
     start_time = clock.now
 
     state.started(start_time)
     state.run(start_time, events)
     event = events.receive.task_stopped.not_nil!
-    state.stopped(status: event.status, last_command_index: event.last_command_index, stop_time: event.stop_time)
+    runtime.handle_task_stopped(event)
 
     state.last_status.should eq(23)
     event.last_command_index.should eq(1)
@@ -116,16 +116,16 @@ describe TaskState do
     schedule = Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml", clock: clock)
     state = TaskState.new(
       task: task,
-      schedule: schedule,
-      stop_handler: TaskStopHandler.new(FailingMailer.new)
+      schedule: schedule
     )
+    runtime = ScheduleRuntime.new(schedule, clock, FailingMailer.new)
     events = Channel(SchedulerEvent).new(1)
     start_time = clock.now
 
     state.started(start_time)
     state.run(start_time, events)
     event = events.receive.task_stopped.not_nil!
-    state.stopped(status: event.status, last_command_index: event.last_command_index, stop_time: event.stop_time)
+    runtime.handle_task_stopped(event)
 
     log_dir = state.log_dn(state.last_start.not_nil!)
     File.read("#{log_dir}/mailfail").should contain("mail unavailable")

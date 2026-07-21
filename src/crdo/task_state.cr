@@ -5,7 +5,6 @@ class TaskState
   @process_runner : TaskProcessRunner
   @mailer : TaskMailer
   @run_evaluator : TaskRunEligibilityEvaluator
-  @stop_handler : TaskStopHandler
   @current_start : Time? = nil
   @last_start : Time? = nil
   @last_stop : Time? = nil
@@ -17,7 +16,7 @@ class TaskState
   @retiring = false
   getter parent_status, task, retiring, last_start, last_stop, last_status
 
-  def initialize(@task, @schedule, @process_runner = TaskProcessRunner.new, @mailer = TaskMailer.new, @run_evaluator = TaskRunEligibilityEvaluator.new, @stop_handler = TaskStopHandler.new)
+  def initialize(@task, @schedule, @process_runner = TaskProcessRunner.new, @mailer = TaskMailer.new, @run_evaluator = TaskRunEligibilityEvaluator.new)
   end
 
   def run_time
@@ -138,12 +137,11 @@ class TaskState
     base.not_nil! + @task.every.not_nil!
   end
 
-  def stopped(status : Int32, last_command_index : Int32, stop_time : Time)
+  def mark_stopped(status : Int32, stop_time : Time)
     @running = false
     @last_start = @current_start
     @last_status = status
     @last_stop = stop_time
-    @stop_handler.handle(self, @schedule)
   end
 
   def run(start_time : Time, events : Channel(SchedulerEvent))
