@@ -291,10 +291,10 @@ describe Schedule do
       "#{path}.state",
       [
         {
-          name: "a",
+          name:          "a",
           last_start_ms: (Time.local - 2.minutes).to_utc.to_unix_ms,
-          last_stop_ms: (Time.local - 1.minute).to_utc.to_unix_ms,
-          last_status: 0,
+          last_stop_ms:  (Time.local - 1.minute).to_utc.to_unix_ms,
+          last_status:   0,
         },
       ].to_json
     )
@@ -315,16 +315,16 @@ describe Schedule do
       "#{path}.state",
       [
         {
-          name: "a",
+          name:          "a",
           last_start_ms: (Time.local - 2.minutes).to_utc.to_unix_ms,
-          last_stop_ms: (Time.local - 1.minute).to_utc.to_unix_ms,
-          last_status: 0,
+          last_stop_ms:  (Time.local - 1.minute).to_utc.to_unix_ms,
+          last_status:   0,
         },
         {
-          name: "missing",
+          name:          "missing",
           last_start_ms: Time.local.to_utc.to_unix_ms,
-          last_stop_ms: Time.local.to_utc.to_unix_ms,
-          last_status: 0,
+          last_stop_ms:  Time.local.to_utc.to_unix_ms,
+          last_status:   0,
         },
       ].to_json
     )
@@ -373,12 +373,12 @@ describe Schedule do
       "#{path}.state",
       {
         version: 2,
-        tasks: [
+        tasks:   [
           {
-            name: "a",
+            name:          "a",
             last_start_ms: clock.now.to_utc.to_unix_ms,
-            last_stop_ms: nil,
-            last_status: 0,
+            last_stop_ms:  nil,
+            last_status:   0,
           },
         ],
       }.to_json
@@ -462,5 +462,25 @@ describe ScheduleReporter do
 
     reporter.next_task_wait(state).should contain("00:02")
     reporter.next_task_wait(state).should contain("2026-03-16 10:00:02")
+  end
+
+  it "includes mail failures in the report output" do
+    clock = FakeClock.new(Time.local(2026, 3, 16, 10, 0, 0))
+    output = IO::Memory.new
+    reporter = ScheduleReporter.new(clock, output)
+    failures = [
+      MailFailure.new(
+        task_name: "backup",
+        log_dir: "/tmp/crdo/cron_logs/backup/2026-03-16/10-00-00",
+        message: "mail unavailable",
+        time: clock.now),
+    ]
+
+    reporter.print_report([] of TaskWaitState, failures)
+
+    text = output.to_s
+    text.should contain("mail failures:")
+    text.should contain("backup: mail unavailable")
+    text.should contain("/tmp/crdo/cron_logs/backup/2026-03-16/10-00-00")
   end
 end

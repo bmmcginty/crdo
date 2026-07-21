@@ -15,9 +15,10 @@ class Schedule
   @current_now : Time? = nil
   @config_state : ScheduleConfigState? = nil
   @reporter : ScheduleReporter
+  @mail_failures = [] of MailFailure
 
   delegate :select, to: @schedule
-  getter immediate, filter, clock, previous_now, current_now, autosave, reporter
+  getter immediate, filter, clock, previous_now, current_now, autosave, reporter, mail_failures
 
   def initialize(@test, @immediate, @filter, @crontab, @clock : Clock = SystemClock.new, @loop_waiter : LoopWaiter = SelectLoopWaiter.new)
     @reporter = ScheduleReporter.new(@clock)
@@ -103,13 +104,21 @@ class Schedule
   end
 
   def print_report
-    @reporter.print_report(@reasons)
+    @reporter.print_report(@reasons, @mail_failures)
   end
 
   def apply_pass_result(pass_time : Time, reasons : Array(TaskWaitState))
     @reasons = reasons
     @current_now = pass_time
     @previous_now = pass_time
+  end
+
+  def record_mail_failure(task_name : String, log_dir : String, message : String)
+    @mail_failures << MailFailure.new(
+      task_name: task_name,
+      log_dir: log_dir,
+      message: message,
+      time: @clock.now)
   end
 
   def loop(run_state_channel : Channel(RunState)? = nil)

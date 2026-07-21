@@ -1,7 +1,8 @@
 class ScheduleReporter
   @clock : Clock
+  @output : IO
 
-  def initialize(@clock : Clock)
+  def initialize(@clock : Clock, @output : IO = STDOUT)
   end
 
   def next_task_wait(state : TaskState)
@@ -19,21 +20,27 @@ class ScheduleReporter
     running = schedule.select(&.running?)
     running.sort_by! { |i| i.task.name }
     running.each do |i|
-      puts "#{i.task.name}, #{i.run_time}"
+      @output.puts "#{i.task.name}, #{i.run_time}"
     end
-    puts "-----"
+    @output.puts "-----"
   end
 
-  def print_report(reasons : Array(TaskWaitState))
-    puts "as of #{@clock.now}"
+  def print_report(reasons : Array(TaskWaitState), mail_failures : Array(MailFailure) = [] of MailFailure)
+    @output.puts "as of #{@clock.now}"
     reasons.each do |r|
-      puts "#{r[:task].name}, #{r[:reason].none? || r[:reason].already_running? ? "running" : r[:reason].to_s}: #{r[:text]} #{format_time_span(r[:time])}"
+      @output.puts "#{r[:task].name}, #{r[:reason].none? || r[:reason].already_running? ? "running" : r[:reason].to_s}: #{r[:text]} #{format_time_span(r[:time])}"
     end
-    puts "-----"
+    if mail_failures.size > 0
+      @output.puts "mail failures:"
+      mail_failures.each do |failure|
+        @output.puts "#{failure.time} #{failure.task_name}: #{failure.message} #{failure.log_dir}"
+      end
+    end
+    @output.puts "-----"
   end
 
   def started(task : TaskState, start_time : Time)
-    puts "start #{task.task.name} at #{start_time}"
+    @output.puts "start #{task.task.name} at #{start_time}"
   end
 
   def stopped(task : TaskState, status : Int32, next_wait : String)
@@ -42,14 +49,14 @@ class ScheduleReporter
                else
                  0.seconds
                end
-    puts "stop #{task.task.name} rc=#{status} duration=#{format_time_span(duration)} next=#{next_wait}"
+    @output.puts "stop #{task.task.name} rc=#{status} duration=#{format_time_span(duration)} next=#{next_wait}"
   end
 
   def run_state_changed(run_state : RunState)
-    puts "run state #{run_state}"
+    @output.puts "run state #{run_state}"
   end
 
   def invalid_transition(requested : RunState, current : RunState, drain_state : DrainState)
-    puts "requested run state #{requested} but currently have run state #{current} drain state #{drain_state}"
+    @output.puts "requested run state #{requested} but currently have run state #{current} drain state #{drain_state}"
   end
 end

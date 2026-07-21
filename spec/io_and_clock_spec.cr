@@ -7,7 +7,7 @@ class RecordingMailer < TaskMailer
     body: String,
     attach: Array(String)?)
 
-  def send_mail(to, subject, body : IO | String | Nil, attach : Array(String)?)
+  def send_mail(to, subject, body : IO | String | Nil, attach : Array(String)?) : MailDeliveryResult
     body_text = case body
                 when String
                   body
@@ -18,11 +18,18 @@ class RecordingMailer < TaskMailer
                   body.gets_to_end
                 end
     @deliveries << {
-      to: to.as(String),
+      to:      to.as(String),
       subject: subject.as(String),
-      body: body_text,
-      attach: attach,
+      body:    body_text,
+      attach:  attach,
     }
+    MailDeliveryResult.new(success: true, message: "")
+  end
+end
+
+class FailingMailer < TaskMailer
+  def send_mail(to, subject, body : IO | String | Nil, attach : Array(String)?) : MailDeliveryResult
+    MailDeliveryResult.new(success: false, message: "mail unavailable")
   end
 end
 
@@ -42,6 +49,7 @@ describe TaskProcessRunner do
     rc.should eq(0)
     log_dir = runner.log_dn(task, start_time)
     JSON.parse(File.read("#{log_dir}/0.cmdline")).as_a.map(&.as_s).should eq(["/bin/echo", "hello"])
+    File.read("#{log_dir}/0.rc").should eq("0\n")
     File.read("#{log_dir}/0.stdout").should contain("hello")
     File.read("#{log_dir}/0.stderr").should eq("")
   end
@@ -61,6 +69,69 @@ describe TaskProcessRunner do
     log_dir = runner.log_dn(task, start_time)
     JSON.parse(File.read("#{log_dir}/0.cmdline")).as_a.map(&.as_s).should eq(["echo", "/bin/echo", "hello"])
     File.read("#{log_dir}/0.stdout").should contain("/bin/echo hello")
+  end
+end
+
+describe TaskState do
+  it "sends failure mail when a later command exits non-zero" do
+    dir = unique_tmpdir("crdo-second-command-failure")
+    task = load_task(
+      "a",
+      "every: 1s\ncommands:\n  - /bin/true\n  - /bin/sh -c 'exit 23'\n",
+      "workdir: #{dir}\nmail: ops@example.com"
+    )
+    schedule = Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml")
+    mailer = RecordingMailer.new
+    state = TaskState.new(
+      task: task,
+      schedule: schedule,
+      stop_handler: TaskStopHandler.new(mailer)
+    )
+    start_channel = Channel(Time).new(1)
+    events_channel = Channel(TaskEvent).new(1)
+
+    state.run(start_channel, events_channel)
+    state.started(start_channel.receive)
+    event = events_channel.receive
+    state.stopped(status: event[1], last_command_index: event[2], stop_time: event[3])
+
+    state.last_status.should eq(23)
+    event[2].should eq(1)
+    log_dir = state.log_dn(state.last_start.not_nil!)
+    File.read("#{log_dir}/0.rc").should eq("0\n")
+    File.read("#{log_dir}/1.rc").should eq("23\n")
+    mailer.deliveries.size.should eq(1)
+    mailer.deliveries.first[:subject].should eq("task a exitted 23")
+  end
+
+  it "writes mailfail and records report state when failure mail cannot be delivered" do
+    dir = unique_tmpdir("crdo-mailfail")
+    task = load_task(
+      "a",
+      "every: 1s\ncommands:\n  - /bin/sh -c 'exit 23'\n",
+      "workdir: #{dir}\nmail: ops@example.com"
+    )
+    clock = FakeClock.new(Time.local(2026, 3, 16, 12, 0, 0))
+    schedule = Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml", clock: clock)
+    state = TaskState.new(
+      task: task,
+      schedule: schedule,
+      stop_handler: TaskStopHandler.new(FailingMailer.new)
+    )
+    start_channel = Channel(Time).new(1)
+    events_channel = Channel(TaskEvent).new(1)
+
+    state.run(start_channel, events_channel)
+    state.started(start_channel.receive)
+    event = events_channel.receive
+    state.stopped(status: event[1], last_command_index: event[2], stop_time: event[3])
+
+    log_dir = state.log_dn(state.last_start.not_nil!)
+    File.read("#{log_dir}/mailfail").should contain("mail unavailable")
+    schedule.mail_failures.size.should eq(1)
+    schedule.mail_failures.first.task_name.should eq("a")
+    schedule.mail_failures.first.log_dir.should eq(log_dir)
+    schedule.mail_failures.first.message.should eq("mail unavailable")
   end
 end
 

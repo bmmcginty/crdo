@@ -10,7 +10,7 @@ class TaskStopHandler
       propagate_success(state, schedule)
     else
       run_error_command(state.task)
-      notify_failure(state)
+      notify_failure(state, schedule)
     end
   end
 
@@ -44,8 +44,13 @@ class TaskStopHandler
     sleep 0.seconds
   end
 
-  def notify_failure(state : TaskState)
+  def notify_failure(state : TaskState, schedule : Schedule)
     return unless state.task.global.mail
-    @mailer.notify_failure(state.task, state.last_status, state.log_dn(state.last_start.as(Time)))
+    log_dir = state.log_dn(state.last_start.as(Time))
+    result = @mailer.notify_failure(state.task, state.last_status, log_dir)
+    return if result.success
+
+    File.write("#{log_dir}/mailfail", "#{result.message}\n")
+    schedule.record_mail_failure(state.task.name, log_dir, result.message)
   end
 end

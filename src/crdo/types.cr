@@ -21,6 +21,16 @@ record TaskStateSnapshot,
 
 alias TaskEvent = Tuple(TaskState, Int32, Int32, Time)
 
+record MailDeliveryResult,
+  success : Bool,
+  message : String
+
+record MailFailure,
+  task_name : String,
+  log_dir : String,
+  message : String,
+  time : Time
+
 enum WhenForwardPolicy
   After
   Skip

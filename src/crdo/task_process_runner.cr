@@ -22,9 +22,12 @@ class TaskProcessRunner
         output: output_fh,
         chdir: task.global.workdir
       )
-      process.wait.exit_code
+      rc = process.wait.exit_code
+      File.write("#{dn}/#{idx}.rc", "#{rc}\n")
+      rc
     rescue e
       error_fh << "\n#{e.inspect}"
+      File.write("#{dn}/#{idx}.rc", "999\n")
       raise e
     ensure
       error_fh.close

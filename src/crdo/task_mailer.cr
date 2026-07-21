@@ -1,5 +1,5 @@
 class TaskMailer
-  def send_mail(to, subject, body : IO | String | Nil, attach : Array(String)?)
+  def send_mail(to, subject, body : IO | String | Nil, attach : Array(String)?) : MailDeliveryResult
     body = case body
            when String
              IO::Memory.new(body)
@@ -17,11 +17,15 @@ class TaskMailer
     end
     args << to
     body.seek(0)
-    Process.run(
+    status = Process.run(
       command: "/usr/bin/mail",
       args: args,
       input: body
     )
+    return MailDeliveryResult.new(success: true, message: "") if status.success?
+    MailDeliveryResult.new(success: false, message: "mail exited #{status.exit_code}")
+  rescue e
+    MailDeliveryResult.new(success: false, message: e.message || e.inspect)
   end
 
   def notify_overtime(task : Task)
@@ -32,7 +36,7 @@ class TaskMailer
       attach: nil)
   end
 
-  def notify_failure(task : Task, last_status : Int32, log_dir : String)
+  def notify_failure(task : Task, last_status : Int32, log_dir : String) : MailDeliveryResult
     subject = "task #{task.name} exitted #{last_status}"
     attachments = Dir.glob("#{log_dir}/*")
     body = IO::Memory.new
