@@ -38,13 +38,13 @@ class ScheduleRuntime
 
   def run_due_tasks(events : Channel(SchedulerEvent))
     pass_time = @clock.now
-    reasons = [] of TaskWaitState
+    reasons = [] of TaskRunDecision
     do_filter = @schedule.filter.size > 0
     @schedule.states.each do |task_state|
       next if do_filter && !@schedule.filter.includes?(task_state.task.name)
 
       reason = @schedule.task_wait_state(task_state, pass_time)
-      if reason[:reason].none?
+      if reason.reason.none?
         start_task(task_state, events)
       elsif task_state.should_notify_overtime?(@clock.now)
         task_state.notify_overtime
@@ -52,13 +52,13 @@ class ScheduleRuntime
       reasons << reason
     end
 
-    reasons.sort_by! { |reason| {reason[:reason], reason[:time], reason[:task].name} }
+    reasons.sort_by! { |reason| {reason.reason, reason.wait_time, reason.task.name} }
     @schedule.apply_pass_result(pass_time, reasons)
     @shortest_timeout = next_wake_timeout(reasons)
   end
 
-  def next_wake_timeout(reasons : Array(TaskWaitState)) : Time::Span
-    waits = reasons.select { |reason| reason[:reason].wait? }.map { |reason| reason[:time] }
+  def next_wake_timeout(reasons : Array(TaskRunDecision)) : Time::Span
+    waits = reasons.select { |reason| reason.reason.wait? }.map(&.wait_time)
     wait_time = waits.empty? ? 1.hour : waits.min
     if next_autosave = @next_autosave_at
       autosave_wait = next_autosave - @clock.now

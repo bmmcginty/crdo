@@ -2,11 +2,11 @@ require "json"
 require "option_parser"
 require "yaml"
 
-alias TaskWaitState = NamedTuple(
-  task: Task,
-  reason: WaitReason,
-  text: String,
-  time: Time::Span)
+record TaskRunDecision,
+  task : Task,
+  reason : WaitReason,
+  text : String,
+  wait_time : Time::Span
 
 record CliOptions,
   test : Bool,

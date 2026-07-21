@@ -16,7 +16,7 @@ describe TaskState do
     )
 
     state = TaskState.new(task: task)
-    schedule.task_wait_state(state)[:reason].disabled?.should be_true
+    schedule.task_wait_state(state).reason.disabled?.should be_true
   end
 
   it "enforces serial groups and exclusive groups" do
@@ -28,8 +28,8 @@ describe TaskState do
     schedule.add_tasks([a.task, b.task, ex.task])
     schedule["a"].started(Time.local)
 
-    schedule.task_wait_state(schedule["b"])[:reason].serial?.should be_true
-    schedule.task_wait_state(schedule["ex"])[:reason].exclusive?.should be_true
+    schedule.task_wait_state(schedule["b"]).reason.serial?.should be_true
+    schedule.task_wait_state(schedule["ex"]).reason.exclusive?.should be_true
   end
 
   it "uses stop time when requested" do
@@ -46,7 +46,7 @@ describe TaskState do
         last_status: 0)
     )
 
-    schedule.task_wait_state(state)[:reason].wait?.should be_true
+    schedule.task_wait_state(state).reason.wait?.should be_true
   end
 
   it "uses the injected schedule clock for should_run timing" do
@@ -64,9 +64,9 @@ describe TaskState do
         last_status: 0)
     )
 
-    schedule.task_wait_state(state)[:reason].wait?.should be_true
+    schedule.task_wait_state(state).reason.wait?.should be_true
     clock.now = clock.now + 3.seconds
-    schedule.task_wait_state(state)[:reason].none?.should be_true
+    schedule.task_wait_state(state).reason.none?.should be_true
   end
 end
 
@@ -90,7 +90,7 @@ describe TaskRunEligibilityEvaluator do
         previous_now: nil,
         now: Time.local))
 
-    result[:reason].wait?.should be_true
+    result.reason.wait?.should be_true
   end
 
   it "lets immediate filtered tasks bypass parent gating in pure evaluation" do
@@ -107,7 +107,7 @@ describe TaskRunEligibilityEvaluator do
         previous_now: nil,
         now: Time.local))
 
-    result[:reason].none?.should be_true
+    result.reason.none?.should be_true
   end
 end
 
@@ -125,7 +125,7 @@ describe "when_policy" do
         previous_now: Time.local(2026, 3, 16, 0, 59, 0),
         now: Time.local(2026, 3, 16, 1, 1, 0)))
 
-    result[:reason].none?.should be_true
+    result.reason.none?.should be_true
   end
 
   it "skips a missed forward jump when configured to skip" do
@@ -141,7 +141,7 @@ describe "when_policy" do
         previous_now: Time.local(2026, 3, 16, 0, 59, 0),
         now: Time.local(2026, 3, 16, 1, 1, 0)))
 
-    result[:reason].wait?.should be_true
+    result.reason.wait?.should be_true
   end
 
   it "suppresses a repeated backward slot when configured to once" do
@@ -228,7 +228,7 @@ describe ScheduleState do
     schedule = ScheduleState.new(test: false, immediate: true, filter: Set{"child"}, crontab: path)
     schedule.load_initial_state
 
-    schedule.task_wait_state(schedule["child"])[:reason].none?.should be_true
+    schedule.task_wait_state(schedule["child"]).reason.none?.should be_true
   end
 
   it "writes version 2 state and reads legacy state" do
@@ -425,7 +425,7 @@ describe ScheduleReporter do
         time: clock.now),
     ]
 
-    reporter.print_report([] of TaskWaitState, failures)
+    reporter.print_report([] of TaskRunDecision, failures)
 
     text = output.to_s
     text.should contain("mail failures:")

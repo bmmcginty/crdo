@@ -5,10 +5,10 @@ class ScheduleReporter
   def initialize(@clock : Clock, @output : IO = STDOUT)
   end
 
-  def next_task_wait(state : TaskState, wait_state : TaskWaitState)
-    if wait_state[:reason].wait?
-      next_time = @clock.now + wait_state[:time]
-      "#{format_time_span(wait_state[:time])} (#{next_time})"
+  def next_task_wait(state : TaskState, decision : TaskRunDecision)
+    if decision.reason.wait?
+      next_time = @clock.now + decision.wait_time
+      "#{format_time_span(decision.wait_time)} (#{next_time})"
     else
       next_time = state.next_scheduled_time(@clock.now)
       "#{format_time_span(next_time - @clock.now)} (#{next_time})"
@@ -24,10 +24,11 @@ class ScheduleReporter
     @output.puts "-----"
   end
 
-  def print_report(reasons : Array(TaskWaitState), mail_failures : Array(MailFailure) = [] of MailFailure)
+  def print_report(reasons : Array(TaskRunDecision), mail_failures : Array(MailFailure) = [] of MailFailure)
     @output.puts "as of #{@clock.now}"
-    reasons.each do |r|
-      @output.puts "#{r[:task].name}, #{r[:reason].none? || r[:reason].already_running? ? "running" : r[:reason].to_s}: #{r[:text]} #{format_time_span(r[:time])}"
+    reasons.each do |decision|
+      state_text = decision.reason.none? || decision.reason.already_running? ? "running" : decision.reason.to_s
+      @output.puts "#{decision.task.name}, #{state_text}: #{decision.text} #{format_time_span(decision.wait_time)}"
     end
     if mail_failures.size > 0
       @output.puts "mail failures:"

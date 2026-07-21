@@ -8,7 +8,7 @@ class ScheduleState
   @autosave : Time::Span = 0.seconds
   property :test
   @print_report = true
-  @reasons = [] of TaskWaitState
+  @reasons = [] of TaskRunDecision
   @deferred_tasks = Hash(String, Task).new
   @previous_now : Time? = nil
   @store : ScheduleStore? = nil
@@ -116,7 +116,7 @@ class ScheduleState
     @reporter.print_report(@reasons, @mail_failures)
   end
 
-  def apply_pass_result(pass_time : Time, reasons : Array(TaskWaitState))
+  def apply_pass_result(pass_time : Time, reasons : Array(TaskRunDecision))
     @reasons = reasons
     @previous_now = pass_time
   end
