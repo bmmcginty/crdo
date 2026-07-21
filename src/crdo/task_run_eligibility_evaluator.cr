@@ -1,3 +1,10 @@
+record TaskRunContext,
+  running : Array(TaskState),
+  immediate : Bool,
+  filter : Set(String),
+  previous_now : Time?,
+  now : Time
+
 class TaskRunEligibilityEvaluator
   def evaluate(state : TaskState, context : TaskRunContext) : TaskWaitState
     task = state.task
