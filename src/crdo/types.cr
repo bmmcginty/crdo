@@ -54,15 +54,6 @@ struct WhenPolicy
   end
 end
 
-enum RunState
-  Normal
-  Reload
-  Save
-  Exit
-  PrintReport
-  PrintRunningReport
-end
-
 enum DrainState
   None
   Draining
@@ -79,15 +70,23 @@ enum WaitReason
   Disabled
 end
 
-enum ScheduleEventKind
-  RunStateRequest
-  TaskCompleted
-  Timeout
+enum RuntimeState
+  Normal
+  Exit
 end
 
-record ScheduleEvent,
-  kind : ScheduleEventKind,
-  run_state : RunState?,
+enum SchedulerEventKind
+  Timeout
+  TaskStopped
+  ReloadRequested
+  SaveRequested
+  ExitRequested
+  PrintReportRequested
+  PrintRunningReportRequested
+end
+
+record SchedulerEvent,
+  kind : SchedulerEventKind,
   task_event : TaskEvent?
 
 def format_time_span(t)

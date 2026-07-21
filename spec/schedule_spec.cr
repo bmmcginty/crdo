@@ -1,17 +1,5 @@
 require "./spec_helper"
 
-class StopLoopWait < Exception
-end
-
-class RecordingLoopWaiter < LoopWaiter
-  getter waits = [] of Time::Span
-
-  def wait(run_state_channel : Channel(RunState)?, events : Channel(TaskEvent), wait_time : Time::Span) : ScheduleEvent
-    @waits << wait_time
-    raise StopLoopWait.new("stop after recording wait")
-  end
-end
-
 def write_schedule_config(path : String, body : String)
   write_yaml(
     path,
@@ -361,14 +349,13 @@ describe Schedule do
     schedule["task2"]?.should_not be_nil
   end
 
-  it "requests the computed wait timeout instead of busy-spinning for every schedules" do
+  it "computes the next wait timeout instead of busy-spinning for every schedules" do
     dir = unique_tmpdir("crdo-loop-wait")
     path = write_schedule_config(
       "#{dir}/root.yml",
       "a:\n  every: 1m\n  commands:\n    - /bin/true\n"
     )
     clock = FakeClock.new(Time.local(2026, 3, 16, 12, 0, 0))
-    waiter = RecordingLoopWaiter.new
     File.write(
       "#{path}.state",
       {
@@ -388,15 +375,14 @@ describe Schedule do
       immediate: false,
       filter: Set(String).new,
       crontab: path,
-      clock: clock,
-      loop_waiter: waiter
+      clock: clock
     )
+    runtime = ScheduleRuntime.new(schedule, clock)
 
-    expect_raises(StopLoopWait) do
-      schedule.loop
-    end
+    schedule.initial_load
+    reasons = [schedule["a"].should_run?]
 
-    waiter.waits.first.should eq(1.minute)
+    runtime.next_wake_timeout(reasons).should eq(1.minute)
   end
 end
 

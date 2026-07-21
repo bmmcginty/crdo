@@ -5,7 +5,6 @@ class Schedule
   @filter : Set(String)
   @crontab : String
   @clock : Clock
-  @loop_waiter : LoopWaiter
   @autosave : Time::Span = 0.seconds
   property :test
   @print_report = true
@@ -20,7 +19,7 @@ class Schedule
   delegate :select, to: @schedule
   getter immediate, filter, clock, previous_now, current_now, autosave, reporter, mail_failures
 
-  def initialize(@test, @immediate, @filter, @crontab, @clock : Clock = SystemClock.new, @loop_waiter : LoopWaiter = SelectLoopWaiter.new)
+  def initialize(@test, @immediate, @filter, @crontab, @clock : Clock = SystemClock.new)
     @reporter = ScheduleReporter.new(@clock)
   end
 
@@ -121,7 +120,7 @@ class Schedule
       time: @clock.now)
   end
 
-  def loop(run_state_channel : Channel(RunState)? = nil)
-    ScheduleRuntime.new(self, @clock, @loop_waiter).run(run_state_channel)
+  def loop(events : Channel(SchedulerEvent)? = nil)
+    ScheduleRuntime.new(self, @clock).run(events)
   end
 end

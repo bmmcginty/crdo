@@ -80,19 +80,20 @@ describe TaskState do
       "every: 1s\ncommands:\n  - /bin/true\n  - /bin/sh -c 'exit 23'\n",
       "workdir: #{dir}\nmail: ops@example.com"
     )
-    schedule = Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml")
+    clock = FakeClock.new(Time.local(2026, 3, 16, 12, 0, 0))
+    schedule = Schedule.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml", clock: clock)
     mailer = RecordingMailer.new
     state = TaskState.new(
       task: task,
       schedule: schedule,
       stop_handler: TaskStopHandler.new(mailer)
     )
-    start_channel = Channel(Time).new(1)
-    events_channel = Channel(TaskEvent).new(1)
+    events = Channel(SchedulerEvent).new(1)
+    start_time = clock.now
 
-    state.run(start_channel, events_channel)
-    state.started(start_channel.receive)
-    event = events_channel.receive
+    state.started(start_time)
+    state.run(start_time, events)
+    event = events.receive.task_event.not_nil!
     state.stopped(status: event[1], last_command_index: event[2], stop_time: event[3])
 
     state.last_status.should eq(23)
@@ -118,12 +119,12 @@ describe TaskState do
       schedule: schedule,
       stop_handler: TaskStopHandler.new(FailingMailer.new)
     )
-    start_channel = Channel(Time).new(1)
-    events_channel = Channel(TaskEvent).new(1)
+    events = Channel(SchedulerEvent).new(1)
+    start_time = clock.now
 
-    state.run(start_channel, events_channel)
-    state.started(start_channel.receive)
-    event = events_channel.receive
+    state.started(start_time)
+    state.run(start_time, events)
+    event = events.receive.task_event.not_nil!
     state.stopped(status: event[1], last_command_index: event[2], stop_time: event[3])
 
     log_dir = state.log_dn(state.last_start.not_nil!)

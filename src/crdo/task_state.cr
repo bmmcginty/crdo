@@ -146,24 +146,24 @@ class TaskState
     @stop_handler.handle(self, @schedule)
   end
 
-  def run(start_channel, events_channel)
+  def run(start_time : Time, events : Channel(SchedulerEvent))
     @errors.clear
-    ts = @schedule.clock.now
-    start_channel.send(ts)
     last_command = -1
     rc = 0
     @task.commands.each_with_index do |c, idx|
       last_command += 1
       t = @task.hydrate_command(c)
       begin
-        rc = run(args: t, idx: idx, start_time: ts)
+        rc = run(args: t, idx: idx, start_time: start_time)
       rescue exc
         rc = 999
         @errors << exc
       end
       break if rc != 0
     end
-    events_channel.send({self, rc, last_command, @schedule.clock.now})
+    events.send(SchedulerEvent.new(
+      kind: SchedulerEventKind::TaskStopped,
+      task_event: {self, rc, last_command, @schedule.clock.now}))
   end
 
   def run(args : Array(String), idx : Int32, start_time : Time)
