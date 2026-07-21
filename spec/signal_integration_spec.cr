@@ -52,7 +52,7 @@ describe "signal wiring" do
 
     build_status = Process.run(
       "crystal",
-      ["build", "crdo.cr", "-o", bin_path],
+      ["build", "src/crdo.cr", "-o", bin_path],
       output: Process::Redirect::Close,
       error: Process::Redirect::Close
     )
