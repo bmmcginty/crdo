@@ -43,7 +43,7 @@ class ScheduleRuntime
     @schedule.states.each do |task_state|
       next if do_filter && !@schedule.filter.includes?(task_state.task.name)
 
-      reason = task_state.should_run?
+      reason = @schedule.task_wait_state(task_state, pass_time)
       if reason[:reason].none?
         start_task(task_state, events)
       elsif task_state.should_notify_overtime?

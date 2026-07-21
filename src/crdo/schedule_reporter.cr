@@ -5,8 +5,7 @@ class ScheduleReporter
   def initialize(@clock : Clock, @output : IO = STDOUT)
   end
 
-  def next_task_wait(state : TaskState)
-    wait_state = state.should_run?
+  def next_task_wait(state : TaskState, wait_state : TaskWaitState)
     if wait_state[:reason].wait?
       next_time = @clock.now + wait_state[:time]
       "#{format_time_span(wait_state[:time])} (#{next_time})"

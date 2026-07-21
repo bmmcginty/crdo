@@ -182,9 +182,9 @@ describe "every with fake clock" do
     )
     state.apply_snapshot(TaskStateSnapshot.new(last_start: clock.now, last_stop: nil, last_status: 0))
 
-    state.should_run?[:reason].wait?.should be_true
+    schedule.task_wait_state(state)[:reason].wait?.should be_true
     clock.now = clock.now + 1.second
-    state.should_run?[:reason].none?.should be_true
+    schedule.task_wait_state(state)[:reason].none?.should be_true
   end
 
   it "supports every 1m without waiting on wall clock" do
@@ -196,8 +196,8 @@ describe "every with fake clock" do
     )
     state.apply_snapshot(TaskStateSnapshot.new(last_start: clock.now, last_stop: nil, last_status: 0))
 
-    state.should_run?[:reason].wait?.should be_true
+    schedule.task_wait_state(state)[:reason].wait?.should be_true
     clock.now = clock.now + 1.minute
-    state.should_run?[:reason].none?.should be_true
+    schedule.task_wait_state(state)[:reason].none?.should be_true
   end
 end

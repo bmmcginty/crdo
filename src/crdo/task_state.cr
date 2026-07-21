@@ -4,7 +4,6 @@ class TaskState
   @task : Task
   @process_runner : TaskProcessRunner
   @mailer : TaskMailer
-  @run_evaluator : TaskRunEligibilityEvaluator
   @current_start : Time? = nil
   @last_start : Time? = nil
   @last_stop : Time? = nil
@@ -16,7 +15,7 @@ class TaskState
   @retiring = false
   getter parent_status, task, retiring, last_start, last_stop, last_status
 
-  def initialize(@task, @schedule, @process_runner = TaskProcessRunner.new, @mailer = TaskMailer.new, @run_evaluator = TaskRunEligibilityEvaluator.new)
+  def initialize(@task, @schedule, @process_runner = TaskProcessRunner.new, @mailer = TaskMailer.new)
   end
 
   def run_time
@@ -176,16 +175,5 @@ class TaskState
       raise e
     end
     ret
-  end
-
-  def should_run? : TaskWaitState
-    @run_evaluator.evaluate(
-      self,
-      TaskRunContext.new(
-        running: @schedule.running,
-        immediate: @schedule.immediate,
-        filter: @schedule.filter,
-        previous_now: @schedule.previous_now,
-        now: @schedule.clock.now))
   end
 end

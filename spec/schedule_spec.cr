@@ -16,7 +16,7 @@ describe TaskState do
     )
 
     state = TaskState.new(task: task, schedule: schedule)
-    state.should_run?[:reason].disabled?.should be_true
+    schedule.task_wait_state(state)[:reason].disabled?.should be_true
   end
 
   it "enforces serial groups and exclusive groups" do
@@ -37,8 +37,8 @@ describe TaskState do
     schedule.add_tasks([a.task, b.task, ex.task])
     schedule["a"].started(Time.local)
 
-    schedule["b"].should_run?[:reason].serial?.should be_true
-    schedule["ex"].should_run?[:reason].exclusive?.should be_true
+    schedule.task_wait_state(schedule["b"])[:reason].serial?.should be_true
+    schedule.task_wait_state(schedule["ex"])[:reason].exclusive?.should be_true
   end
 
   it "uses stop time when requested" do
@@ -55,7 +55,7 @@ describe TaskState do
         last_status: 0)
     )
 
-    state.should_run?[:reason].wait?.should be_true
+    schedule.task_wait_state(state)[:reason].wait?.should be_true
   end
 
   it "uses the injected schedule clock for should_run timing" do
@@ -73,9 +73,9 @@ describe TaskState do
         last_status: 0)
     )
 
-    state.should_run?[:reason].wait?.should be_true
+    schedule.task_wait_state(state)[:reason].wait?.should be_true
     clock.now = clock.now + 3.seconds
-    state.should_run?[:reason].none?.should be_true
+    schedule.task_wait_state(state)[:reason].none?.should be_true
   end
 end
 
@@ -267,7 +267,7 @@ describe Schedule do
     schedule = Schedule.new(test: false, immediate: true, filter: Set{"child"}, crontab: path)
     schedule.initial_load
 
-    schedule["child"].should_run?[:reason].none?.should be_true
+    schedule.task_wait_state(schedule["child"])[:reason].none?.should be_true
   end
 
   it "writes version 2 state and reads legacy state" do
@@ -390,7 +390,7 @@ describe Schedule do
     runtime = ScheduleRuntime.new(schedule, clock)
 
     schedule.initial_load
-    reasons = [schedule["a"].should_run?]
+    reasons = [schedule.task_wait_state(schedule["a"])]
 
     runtime.next_wake_timeout(reasons).should eq(1.minute)
   end
@@ -456,8 +456,9 @@ describe ScheduleReporter do
         last_status: 0)
     )
 
-    reporter.next_task_wait(state).should contain("00:02")
-    reporter.next_task_wait(state).should contain("2026-03-16 10:00:02")
+    wait_state = schedule.task_wait_state(state)
+    reporter.next_task_wait(state, wait_state).should contain("00:02")
+    reporter.next_task_wait(state, wait_state).should contain("2026-03-16 10:00:02")
   end
 
   it "includes mail failures in the report output" do

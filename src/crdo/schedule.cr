@@ -73,8 +73,19 @@ class Schedule
     @deferred_tasks.has_key?(name)
   end
 
+  def task_wait_state(state : TaskState, now : Time = @clock.now)
+    TaskRunEligibilityEvaluator.new.evaluate(
+      state,
+      TaskRunContext.new(
+        running: running,
+        immediate: @immediate,
+        filter: @filter,
+        previous_now: @previous_now,
+        now: now))
+  end
+
   def next_task_wait(state : TaskState)
-    @reporter.next_task_wait(state)
+    @reporter.next_task_wait(state, task_wait_state(state))
   end
 
   def initial_load
