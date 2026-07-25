@@ -1,5 +1,4 @@
 class TaskState
-  @errors = [] of Exception
   @task : Task
   @process_runner : TaskProcessRunner
   @mailer : TaskMailer
@@ -125,7 +124,6 @@ class TaskState
   end
 
   def run(start_time : Time, events : Channel(SchedulerEvent), test : Bool, clock : Clock)
-    @errors.clear
     last_command = -1
     rc = 0
     deadline = @task.timeout.try { |timeout| Time.instant + timeout }
@@ -134,9 +132,8 @@ class TaskState
       t = @task.hydrate_command(c)
       begin
         rc = run(args: t, idx: idx, start_time: start_time, test: test, timeout: remaining_timeout(deadline))
-      rescue exc
+      rescue
         rc = 999
-        @errors << exc
       end
       break if rc != 0
     end
@@ -148,13 +145,7 @@ class TaskState
   end
 
   def run(args : Array(String), idx : Int32, start_time : Time, test : Bool, timeout : Time::Span? = nil)
-    begin
-      ret = @process_runner.run(@task, args, idx, start_time, test, timeout)
-    rescue e
-      @errors << e
-      raise e
-    end
-    ret
+    @process_runner.run(@task, args, idx, start_time, test, timeout)
   end
 
   def terminate_running
