@@ -10,7 +10,6 @@ class TaskState
   @running = false
   @overtime_occured = false
   @parent_status = Hash(String, Bool).new
-  @sp : Process? = nil
   @retiring = false
   getter parent_status, task, retiring, last_start, last_stop, last_status
 
