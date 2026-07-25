@@ -29,6 +29,10 @@ record MailDeliveryResult,
   success : Bool,
   message : String
 
+record MailAttachmentPlan,
+  attachments : Array(String),
+  skipped : Array(String)
+
 record MailFailure,
   task_name : String,
   log_dir : String,

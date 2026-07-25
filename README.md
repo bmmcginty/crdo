@@ -69,6 +69,7 @@ global:
   include:
     - sample.include.crdo.yml
   mail: user@example.com
+  mail_size_limit: 10485760
   autosave: 600
   ignore_overtime: false
   print_report: true
@@ -81,6 +82,7 @@ Global keys:
 * `workdir`: required base directory for relative command paths and `cron_logs`.
 * `include`: optional string or list of YAML files to merge into the root config.
 * `mail`: optional address for failure and overtime mail.
+* `mail_size_limit`: optional total attachment limit, in bytes, for failure mail.
 * `autosave`: optional state save interval in seconds. Defaults to 600.
 * `ignore_overtime`: skip overtime warnings for tasks that run past their interval.
 * `print_report`: print automatic start/stop lines when tasks change state.
@@ -174,6 +176,9 @@ Each command writes:
 
 If failure mail cannot be delivered, CRDO writes `mailfail` in the task log
 directory and includes recent mail failures in the USR1 report.
+
+If `mail_size_limit` is set, CRDO attaches log files until the configured byte
+limit is reached and lists skipped files in the message body.
 
 Scheduler state is saved next to the config as `<config>.state`. `--now` skips
 state restore and save.

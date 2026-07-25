@@ -6,6 +6,12 @@ describe GlobalConfig do
 
     cfg.include_paths.should eq(["child.yml"])
   end
+
+  it "parses mail_size_limit" do
+    cfg = load_global("workdir: .\nmail_size_limit: 1048576\n")
+
+    cfg.mail_size_limit.should eq(1_048_576)
+  end
 end
 
 describe "parse_time_span" do

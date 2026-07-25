@@ -3,12 +3,13 @@ class GlobalConfig
   @test = false
   @ignore_overtime = false
   @mail : String? = nil
+  @mail_size_limit : Int64? = nil
   @autosave : Time::Span = 600.seconds
   @workdir : String? = nil
   @include_paths = [] of String
   @print_report = true
 
-  getter test, error, mail, ignore_overtime, include_paths, print_report
+  getter test, error, mail, mail_size_limit, ignore_overtime, include_paths, print_report
   getter! workdir, autosave
 
   def initialize(data : YAML::Any)
@@ -24,6 +25,8 @@ class GlobalConfig
         @ignore_overtime = v.as_bool
       when "mail"
         @mail = v.as_s
+      when "mail_size_limit"
+        @mail_size_limit = v.as_i64
       when "workdir"
         @workdir = Path[v.as_s].expand(home: true).to_s
       when "error"

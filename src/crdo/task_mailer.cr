@@ -38,17 +38,41 @@ class TaskMailer
 
   def notify_failure(task : Task, last_status : Int32, log_dir : String) : MailDeliveryResult
     subject = "task #{task.name} exitted #{last_status}"
-    attachments = Dir.glob("#{log_dir}/*")
+    attachment_plan = failure_attachments(task, log_dir)
     body = IO::Memory.new
     if task.error_body
       body << task.error_body
       body << "\n"
     end
+    if attachment_plan.skipped.size > 0
+      body << "Some log files were not attached because they exceed mail_size_limit:\n"
+      attachment_plan.skipped.each { |path| body << path << "\n" }
+    end
     body << "See attached files."
     send_mail(
       to: task.global.mail.not_nil!,
       subject: subject,
-      attach: attachments,
+      attach: attachment_plan.attachments,
       body: body)
+  end
+
+  private def failure_attachments(task : Task, log_dir : String) : MailAttachmentPlan
+    files = Dir.glob("#{log_dir}/*").sort
+    limit = task.global.mail_size_limit
+    return MailAttachmentPlan.new(attachments: files, skipped: [] of String) unless limit
+
+    used = 0_i64
+    attachments = [] of String
+    skipped = [] of String
+    files.each do |path|
+      size = File.size(path)
+      if used + size <= limit.not_nil!
+        attachments << path
+        used += size
+      else
+        skipped << path
+      end
+    end
+    MailAttachmentPlan.new(attachments: attachments, skipped: skipped)
   end
 end

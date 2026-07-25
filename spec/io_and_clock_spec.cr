@@ -238,6 +238,26 @@ describe TaskMailer do
     mailer.deliveries.first[:body].should contain("fix it")
     mailer.deliveries.first[:attach].not_nil!.sort.should eq(Dir.glob("#{dir}/*").sort)
   end
+
+  it "honors mail_size_limit when attaching failure logs" do
+    dir = unique_tmpdir("crdo-mail-limit")
+    small = "#{dir}/0.rc"
+    large = "#{dir}/0.stdout"
+    File.write(small, "0\n")
+    File.write(large, "x" * 20)
+    task = load_task(
+      "a",
+      "every: 1s\ncommands:\n  - /bin/true\n",
+      "workdir: .\nmail: ops@example.com\nmail_size_limit: 10"
+    )
+    mailer = RecordingMailer.new
+
+    mailer.notify_failure(task, 23, dir)
+
+    mailer.deliveries.first[:attach].should eq([small])
+    mailer.deliveries.first[:body].should contain("not attached")
+    mailer.deliveries.first[:body].should contain(large)
+  end
 end
 
 describe "every with fake clock" do

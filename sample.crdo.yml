@@ -7,6 +7,9 @@ global:
   # string
   # if set, errors and task logs will be sent to this address
   mail: user@domain.tld
+  # integer
+  # optional total attachment limit, in bytes, for failure mail
+  mail_size_limit: 10485760
   # boolean
   # if set, do not send errors for tasks that run long enough to interfear with their next schedule run
   ignore_overtime: false
