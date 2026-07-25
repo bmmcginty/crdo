@@ -1,11 +1,12 @@
 class TaskProcessRunner
   TIMEOUT_EXIT_CODE = 124
   KILL_GRACE_TIME   = 1.second
+  LOG_TIME_FORMAT   = "%Y-%m-%d/%H-%M-%S-%N"
   SETSID            = "/usr/bin/setsid"
   @process : Process? = nil
 
   def log_dn(task : Task, ts : Time)
-    t = ts.to_s("%Y-%m-%d/%H-%M-%S")
+    t = ts.to_s(LOG_TIME_FORMAT)
     "#{task.global.workdir}/cron_logs/#{task.name}/#{t}"
   end
 

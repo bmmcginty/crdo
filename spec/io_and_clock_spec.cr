@@ -54,6 +54,19 @@ describe TaskProcessRunner do
     File.read("#{log_dir}/0.stderr").should eq("")
   end
 
+  it "uses subsecond log directory names for same-second starts" do
+    task = load_task(
+      "a",
+      "every: 1s\ncommands:\n  - /bin/true\n",
+      "workdir: /tmp"
+    )
+    runner = TaskProcessRunner.new
+    first = Time.local(2026, 3, 16, 12, 0, 0, nanosecond: 1)
+    second = Time.local(2026, 3, 16, 12, 0, 0, nanosecond: 2)
+
+    runner.log_dn(task, first).should_not eq(runner.log_dn(task, second))
+  end
+
   it "prefixes commands with echo in test mode" do
     dir = unique_tmpdir("crdo-runner-test")
     task = load_task(
