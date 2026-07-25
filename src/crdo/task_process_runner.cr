@@ -1,6 +1,8 @@
 class TaskProcessRunner
   TIMEOUT_EXIT_CODE = 124
   KILL_GRACE_TIME   = 1.second
+  SETSID            = "/usr/bin/setsid"
+  @process : Process? = nil
 
   def log_dn(task : Task, ts : Time)
     t = ts.to_s("%Y-%m-%d/%H-%M-%S")
@@ -18,13 +20,15 @@ class TaskProcessRunner
     error_fh = File.open("#{dn}/#{idx}.stderr", "wb")
     output_fh = File.open("#{dn}/#{idx}.stdout", "wb")
     begin
+      process_args = process_group_args(args)
       process = Process.new(
-        command: args[0],
-        args: args[1..-1],
+        command: process_args[0],
+        args: process_args[1..-1],
         error: error_fh,
         output: output_fh,
         chdir: task.global.workdir
       )
+      @process = process
       rc = wait_for_process(process, timeout, error_fh)
       File.write("#{dn}/#{idx}.rc", "#{rc}\n")
       rc
@@ -35,7 +39,15 @@ class TaskProcessRunner
     ensure
       error_fh.close
       output_fh.close
+      @process = nil
     end
+  end
+
+  def terminate_running
+    process = @process
+    return unless process
+
+    terminate_process(process, nil)
   end
 
   private def wait_for_process(process : Process, wait_time : Time::Span?, error_fh : IO) : Int32
@@ -56,15 +68,30 @@ class TaskProcessRunner
     end
   end
 
-  private def terminate_process(process : Process, done : Channel(Process::Status))
-    process.signal(Signal::TERM)
+  private def terminate_process(process : Process, done : Channel(Process::Status)?)
+    signal_process_group(process, Signal::TERM)
+    return unless done
 
     select
-    when done.receive
+    when done.not_nil!.receive
     when timeout(KILL_GRACE_TIME)
-      process.signal(Signal::KILL)
-      done.receive
+      signal_process_group(process, Signal::KILL)
+      done.not_nil!.receive
     end
   rescue
+  end
+
+  private def process_group_args(args : Array(String)) : Array(String)
+    return args unless File::Info.executable?(SETSID)
+
+    [SETSID] + args
+  end
+
+  private def signal_process_group(process : Process, signal : Signal)
+    if File::Info.executable?(SETSID)
+      Process.signal(signal, -process.pid.to_i)
+    else
+      process.signal(signal)
+    end
   end
 end

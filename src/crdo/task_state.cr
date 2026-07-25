@@ -174,6 +174,10 @@ class TaskState
     ret
   end
 
+  def terminate_running
+    @process_runner.terminate_running
+  end
+
   private def remaining_timeout(deadline : Time::Instant?)
     return nil unless deadline
 

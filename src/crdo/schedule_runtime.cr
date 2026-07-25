@@ -109,6 +109,7 @@ class ScheduleRuntime
       return invalid_transition(event.kind) unless @mode.normal?
       @mode = RuntimeMode::Exiting
       @schedule.reporter.run_state_changed(@mode)
+      terminate_running_tasks
     when .timeout?
     end
     false
@@ -210,5 +211,9 @@ class ScheduleRuntime
       return false unless task_state.has_run_successfully_once_since?(start_time)
     end
     true
+  end
+
+  private def terminate_running_tasks
+    @schedule.running.each(&.terminate_running)
   end
 end

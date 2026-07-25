@@ -88,6 +88,24 @@ describe TaskProcessRunner do
     File.read("#{log_dir}/0.rc").should eq("#{TaskProcessRunner::TIMEOUT_EXIT_CODE}\n")
     File.read("#{log_dir}/0.stderr").should contain("crdo: command timed out after")
   end
+
+  it "terminates descendants when a command exceeds its timeout" do
+    dir = unique_tmpdir("crdo-runner-timeout-tree")
+    child_marker = "#{dir}/child-finished"
+    task = load_task(
+      "a",
+      "every: 1s\ntimeout: 1s\ncommands:\n  - /bin/sh -c 'sleep 2 && touch #{child_marker} & wait'\n",
+      "workdir: #{dir}"
+    )
+    runner = TaskProcessRunner.new
+    start_time = Time.local(2026, 3, 16, 12, 0, 3)
+
+    rc = runner.run(task, ["/bin/sh", "-c", "sleep 2 && touch #{child_marker} & wait"], 0, start_time, false, task.timeout)
+    sleep 2.seconds
+
+    rc.should eq(TaskProcessRunner::TIMEOUT_EXIT_CODE)
+    File.exists?(child_marker).should be_false
+  end
 end
 
 describe TaskState do

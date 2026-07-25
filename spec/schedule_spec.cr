@@ -215,6 +215,31 @@ describe ScheduleRuntime do
 
     schedule["child"].parent_status["parent"]?.should_not eq(true)
   end
+
+  it "terminates running tasks when exit is requested" do
+    dir = unique_tmpdir("crdo-runtime-exit")
+    marker = "#{dir}/finished"
+    task = load_task(
+      "a",
+      "every: 1s\ncommands:\n  - /bin/sh -c 'sleep 2 && touch #{marker}'\n",
+      "workdir: #{dir}"
+    )
+    clock = FakeClock.new(Time.local(2026, 3, 16, 12, 0, 0))
+    schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml", clock: clock, output: IO::Memory.new)
+    schedule.add_tasks([task])
+    events = Channel(SchedulerEvent).new(1)
+    state = schedule["a"]
+
+    state.started(clock.now)
+    spawn { state.run(clock.now, events, false, clock) }
+    sleep 0.1.seconds
+    ScheduleRuntime.new(schedule, clock).handle_event(SchedulerEvent.exit_requested)
+    stopped = events.receive.task_stopped.not_nil!
+    sleep 2.seconds
+
+    stopped.status.should_not eq(0)
+    File.exists?(marker).should be_false
+  end
 end
 
 describe ScheduleState do
