@@ -83,19 +83,16 @@ class ScheduleStore
   end
 
   def restore_state(schedule : ScheduleState) : Bool
-    err = false
     state_data = load_state_data
     return false unless state_data
     pending = [] of Tuple(TaskState, TaskStateSnapshot)
     state_data.each do |ts|
       task_state = schedule[ts["name"].as_s]?
       if !task_state
-        err = true
         next
       end
       pending << {task_state.not_nil!, snapshot_for(ts)}
     end
-    return false if err
     pending.each do |task_state, snapshot|
       task_state.apply_snapshot(snapshot)
     end

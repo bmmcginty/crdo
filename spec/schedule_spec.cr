@@ -316,8 +316,8 @@ describe ScheduleState do
     reloaded["a"].last_status.should eq(0)
   end
 
-  it "does not partially apply state when any entry is invalid for this schedule" do
-    dir = unique_tmpdir("crdo-state-atomic")
+  it "restores valid state while ignoring stale entries for removed tasks" do
+    dir = unique_tmpdir("crdo-state-stale")
     path = write_schedule_config(
       "#{dir}/root.yml",
       "a:\n  every: 1d\n  commands:\n    - /bin/true\n"
@@ -344,9 +344,9 @@ describe ScheduleState do
     schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: path)
     schedule.load_initial_state
 
-    schedule["a"].last_status.should eq(-1)
-    schedule["a"].last_start.should be_nil
-    schedule["a"].last_stop.should be_nil
+    schedule["a"].last_status.should eq(0)
+    schedule["a"].last_start.should_not be_nil
+    schedule["a"].last_stop.should_not be_nil
   end
 
   it "rejects corrupt restored state timestamp ordering" do
