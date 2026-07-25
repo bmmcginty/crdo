@@ -11,6 +11,17 @@ describe "parse_cli" do
   end
 end
 
+describe "enqueue_scheduler_event" do
+  it "does not block when the signal event channel is full" do
+    events = Channel(SchedulerEvent).new(1)
+    events.send(SchedulerEvent.reload_requested)
+
+    enqueue_scheduler_event(events, SchedulerEvent.exit_requested)
+
+    events.receive.kind.reload_requested?.should be_true
+  end
+end
+
 describe "parse_when" do
   it "supports weekday and time cartesian expansion" do
     matchers = parse_when("mon,tue 23:00,07:00")
