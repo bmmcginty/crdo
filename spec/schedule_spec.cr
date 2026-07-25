@@ -349,6 +349,64 @@ describe ScheduleState do
     schedule["a"].last_stop.should be_nil
   end
 
+  it "rejects corrupt restored state timestamp ordering" do
+    dir = unique_tmpdir("crdo-state-corrupt-order")
+    path = write_schedule_config(
+      "#{dir}/root.yml",
+      "a:\n  every: 1d\n  commands:\n    - /bin/true\n"
+    )
+    now = Time.local(2026, 3, 16, 12, 0, 0)
+    File.write(
+      "#{path}.state",
+      {
+        version: 2,
+        tasks:   [
+          {
+            name:          "a",
+            last_start_ms: now.to_utc.to_unix_ms,
+            last_stop_ms:  (now - 1.minute).to_utc.to_unix_ms,
+            last_status:   0,
+          },
+        ],
+      }.to_json
+    )
+
+    schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: path, clock: FakeClock.new(now + 1.minute))
+
+    expect_raises(Exception, /last_stop is before last_start/) do
+      schedule.load_initial_state
+    end
+  end
+
+  it "rejects restored state timestamps in the future" do
+    dir = unique_tmpdir("crdo-state-corrupt-future")
+    path = write_schedule_config(
+      "#{dir}/root.yml",
+      "a:\n  every: 1d\n  commands:\n    - /bin/true\n"
+    )
+    now = Time.local(2026, 3, 16, 12, 0, 0)
+    File.write(
+      "#{path}.state",
+      {
+        version: 2,
+        tasks:   [
+          {
+            name:          "a",
+            last_start_ms: (now + 1.minute).to_utc.to_unix_ms,
+            last_stop_ms:  nil,
+            last_status:   0,
+          },
+        ],
+      }.to_json
+    )
+
+    schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: path, clock: FakeClock.new(now))
+
+    expect_raises(Exception, /last_start is in the future/) do
+      schedule.load_initial_state
+    end
+  end
+
   it "writes nil status for never-run tasks" do
     dir = unique_tmpdir("crdo-state-empty")
     path = write_schedule_config(

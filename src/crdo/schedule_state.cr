@@ -23,7 +23,7 @@ class ScheduleState
   end
 
   private def store : ScheduleStore
-    @store ||= ScheduleStore.new(@crontab)
+    @store ||= ScheduleStore.new(@crontab, @clock)
   end
 
   def [](name : String)

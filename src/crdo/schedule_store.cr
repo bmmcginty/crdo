@@ -77,8 +77,9 @@ end
 
 class ScheduleStore
   @crontab_path : String
+  @clock : Clock
 
-  def initialize(@crontab_path : String)
+  def initialize(@crontab_path : String, @clock : Clock = SystemClock.new)
   end
 
   def restore_state(schedule : ScheduleState) : Bool
@@ -190,7 +191,7 @@ class ScheduleStore
   end
 
   private def snapshot_for(data : JSON::Any)
-    TaskStateSnapshot.new(
+    snapshot = TaskStateSnapshot.new(
       last_start: if t = data["last_start"]?.try(&.as_i64?)
         Time.unix(t).to_local
       elsif t = data["last_start_ms"]?.try(&.as_i64?)
@@ -206,5 +207,23 @@ class ScheduleStore
         nil
       end,
       last_status: data["last_status"]?.try(&.as_i?) || -1)
+    validate_snapshot(data["name"].as_s, snapshot)
+    snapshot
+  end
+
+  private def validate_snapshot(name : String, snapshot : TaskStateSnapshot)
+    if last_start = snapshot.last_start
+      if last_start > @clock.now
+        raise Exception.new("invalid state for task #{name}: last_start is in the future")
+      end
+    end
+    if last_stop = snapshot.last_stop
+      if last_stop > @clock.now
+        raise Exception.new("invalid state for task #{name}: last_stop is in the future")
+      end
+    end
+    if snapshot.last_start && snapshot.last_stop && snapshot.last_stop.not_nil! < snapshot.last_start.not_nil!
+      raise Exception.new("invalid state for task #{name}: last_stop is before last_start")
+    end
   end
 end
