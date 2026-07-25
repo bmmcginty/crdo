@@ -63,4 +63,10 @@ describe "parse_when" do
 
     matcher.find_next(before_fall_back).should eq(Time.local(2026, 11, 2, 0, 0, 0, location: location))
   end
+
+  it "rejects impossible month-day combinations" do
+    expect_raises(Exception, /invalid when calendar date/) do
+      parse_when("feb 31")
+    end
+  end
 end

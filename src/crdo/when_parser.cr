@@ -9,6 +9,7 @@ struct TimeMatcher
     if @minute == nil && @hour == nil && @month_day == nil && @weekday == nil && @month == nil
       raise Exception.new("invalid TimeMatcher")
     end
+    validate_calendar_combination
   end
 
   def signature
@@ -106,6 +107,17 @@ struct TimeMatcher
       ret = false
     end
     ret
+  end
+
+  private def validate_calendar_combination
+    return unless month = @month
+    return unless day = @month_day
+
+    leap_year = 2024
+    max_day = Time.days_in_month(leap_year, month)
+    if day > max_day
+      raise Exception.new("invalid when calendar date #{month}/#{day}")
+    end
   end
 end
 

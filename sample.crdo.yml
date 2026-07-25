@@ -82,7 +82,13 @@ job5:
     - /usr/bin/sleep 2
     - /usr/bin/echo job 5 done
 job6:
+  # Wall-clock schedules can be affected by NTP/manual clock changes,
+  # daylight-saving transitions, and VM suspend/resume. Use when_policy to
+  # choose how missed or repeated local-time slots behave.
   when: 13:00
+  when_policy:
+    forward: skip
+    backward: once
   commands:
     - /usr/bin/echo job6 done
 job7:

@@ -151,6 +151,12 @@ Backward policies:
 
 `when_policy: true` means `forward: after` and `backward: once`.
 
+CRDO evaluates `when` schedules against wall-clock time. NTP corrections,
+manual clock changes, daylight-saving transitions, and VM suspend/resume can
+therefore skip, delay, or repeat local-time slots according to the selected
+`when_policy`. Use `every` for monotonic interval-style work that should not be
+tied to calendar time.
+
 ## Logs And State
 
 CRDO writes command logs under:
