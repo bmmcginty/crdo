@@ -14,48 +14,103 @@ This document describes how `crdo` is structured today, how work flows through t
 - records task state to disk
 - responds to reload, save, and report signals
 
-The program is split into small components, but the control flow is still centered on `Schedule`.
+```text
+CLI signals
+  -> Channel(SchedulerEvent)
+
+ScheduleRuntime
+  owns the event loop
+  owns task start/stop dispatch
+  owns autosave timing
+  owns runtime mode: normal, exiting, done
+  owns reload/save/report requests
+
+ScheduleState
+  owns loaded TaskState objects
+  owns deferred replacements
+  owns last report reasons
+  owns mail failure history
+  answers task lookup and task wait-state questions
+
+ScheduleStore
+  loads crontab YAML
+  restores/saves .state
+  plans reload keep/defer/retire behavior
+
+TaskState
+  owns mutable facts for one task
+  runs task commands in a fiber
+  emits a task-stopped SchedulerEvent
+
+TaskRunEligibilityEvaluator
+  decides whether one task should run from explicit context
+
+ScheduleReporter / TaskMailer / TaskProcessRunner
+  handle output, mail, and process/log IO
+```
 
 ## Entry points
 
-- `[crdo.cr](/home/bmmcginty/git/crdo/crdo.cr)` is the thin executable entrypoint.
-- `[src/crdo/all.cr](/home/bmmcginty/git/crdo/src/crdo/all.cr)` loads the library code without starting the program.
-- `[src/crdo/cli.cr](/home/bmmcginty/git/crdo/src/crdo/cli.cr)` parses CLI flags and installs signal handlers.
+- `src/crdo.cr` is the thin executable entrypoint; it just calls `main`.
+- `src/crdo/all.cr` requires every library file, in dependency order, without starting the program.
+- `src/crdo/cli.cr` parses CLI flags, installs signal handlers, and defines `main`.
 
-`main` creates a `Schedule` and calls `Schedule#loop`.
+`main` builds a `ScheduleState` and hands it to `ScheduleRuntime#run`.
 
 ## Main runtime flow
 
-The core runtime is now split between `[src/crdo/schedule.cr](/home/bmmcginty/git/crdo/src/crdo/schedule.cr)`, `[src/crdo/schedule_runtime.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_runtime.cr)`, `[src/crdo/schedule_task_runtime.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_task_runtime.cr)`, and `[src/crdo/schedule_reload.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_reload.cr)`.
+The runtime lives entirely in `src/crdo/schedule_runtime.cr` (`ScheduleRuntime`). There is no separate loop-controller/loop-runner/pass-planner split; `ScheduleRuntime#run` is a single explicit loop.
 
-Startup sequence:
+```text
+load initial schedule state
+set next autosave time
 
-1. `Schedule#load(true)` builds a `Crontab`, verifies it, creates `TaskState` objects, and optionally restores persisted state.
-2. `Schedule#loop` delegates to `ScheduleLoopRunner`.
-3. `ScheduleLoopRunner#run` creates channels for run-state requests and task completion events.
-4. Each loop iteration asks `ScheduleLoopController#next_action` what the loop should do next: run a scheduling pass, wait, save-and-exit, or exit.
-5. If a scheduling pass is requested, `SchedulePassPlanner` turns each eligible `TaskState` into a `SchedulePassDecision`.
-6. `Schedule` applies those planned pass actions by starting tasks or sending overtime mail, then updates wait reasons and timeout data in `ScheduleLoopController`.
-7. The loop blocks in `LoopWaiter#wait` until one of three things happens:
-   - a signal-driven run-state request arrives
-   - a task finishes
-   - the shortest computed timeout expires
-8. The resulting `ScheduleEvent` is handed back to `ScheduleLoopController`, which returns a `ScheduleEventDecision` describing the higher-level action such as reload, report, save, transition, or break-loop.
+loop
+  save state if autosave is due
+  update runtime mode
+
+  if exit requested and no tasks are running
+    save state
+    return
+
+  if normal
+    run due tasks
+    record wait reasons
+    compute next wake timeout
+
+  wait for one SchedulerEvent or timeout
+
+  case event
+  when Timeout               -> continue
+  when TaskStopped           -> mark stopped, propagate deps, retire/promote, report
+  when ReloadRequested       -> reload config, reset autosave timer
+  when SaveRequested         -> save state
+  when PrintReportRequested  -> print full schedule report
+  when PrintRunningReportRequested -> print running-only report
+  when ExitRequested         -> enter exiting mode, terminate running tasks
+  end
+end
+```
+
+Signal handlers in `cli.cr` push a `SchedulerEvent` onto a channel:
+
+- `HUP` -> `reload_requested`
+- `INT` -> `exit_requested`
+- `USR1` -> `print_report_requested`
+- `USR2` -> `print_running_report_requested`
+
+`ScheduleRuntime#handle_event` consumes those events directly; there is no intermediate "decision" type between the event and the action taken.
 
 ## Config loading and validation
 
 Config-related code is split into:
 
-- `[src/crdo/global_config.cr](/home/bmmcginty/git/crdo/src/crdo/global_config.cr)`:
-  parses the `global:` section.
-- `[src/crdo/crontab_source_loader.cr](/home/bmmcginty/git/crdo/src/crdo/crontab_source_loader.cr)`:
-  loads the root YAML file and merges `include` files.
-- `[src/crdo/crontab.cr](/home/bmmcginty/git/crdo/src/crdo/crontab.cr)`:
-  turns YAML task entries into `Task` objects.
-- `[src/crdo/crontab_verifier.cr](/home/bmmcginty/git/crdo/src/crdo/crontab_verifier.cr)`:
-  validates commands, missing parents, and cyclical dependencies.
+- `src/crdo/global_config.cr`: parses the `global:` section.
+- `src/crdo/crontab_source_loader.cr`: loads the root YAML file and merges `include` files.
+- `src/crdo/crontab.cr`: turns YAML task entries into `Task` objects.
+- `src/crdo/crontab_verifier.cr`: validates commands, missing parents, and cyclical dependencies.
 
-`Task` parsing itself lives in `[src/crdo/task.cr](/home/bmmcginty/git/crdo/src/crdo/task.cr)`.
+`Task` parsing itself lives in `src/crdo/task.cr`.
 
 Important contract points enforced there:
 
@@ -76,14 +131,14 @@ There are two scheduling modes.
 
 Code path:
 
-- `[src/crdo/task_run_eligibility_evaluator.cr](/home/bmmcginty/git/crdo/src/crdo/task_run_eligibility_evaluator.cr)`
-- `[src/crdo/task_state.cr](/home/bmmcginty/git/crdo/src/crdo/task_state.cr)`
+- `src/crdo/task_run_eligibility_evaluator.cr`
+- `src/crdo/task_state.cr`
 
 This mode does not care about civil-time concepts like DST wall-clock folds. It only depends on elapsed durations from the scheduler's current clock.
 
 ### `when`
 
-`when` uses wall-clock matching through `TimeMatcher` in `[src/crdo/when_parser.cr](/home/bmmcginty/git/crdo/src/crdo/when_parser.cr)`.
+`when` uses wall-clock matching through `TimeMatcher` in `src/crdo/when_parser.cr`.
 
 `parse_when` expands YAML `when` strings into one or more `TimeMatcher` objects. A matcher can constrain:
 
@@ -106,43 +161,34 @@ Comma-separated tokens expand combinatorially within token type, so `mon,tue 23:
 
 `Task` is the immutable config definition. `TaskState` is the mutable runtime state for a task.
 
-`[src/crdo/task_state.cr](/home/bmmcginty/git/crdo/src/crdo/task_state.cr)` stores:
+`src/crdo/task_state.cr` stores:
 
 - current run state
 - last start/stop/status
-- dependency state
+- dependency state (`parent_status`)
 - retirement state during reload
 
 It delegates side effects and policy decisions to collaborators:
 
-- `[src/crdo/task_process_runner.cr](/home/bmmcginty/git/crdo/src/crdo/task_process_runner.cr)`:
-  executes task commands and writes `cron_logs/...`
-- `[src/crdo/task_mailer.cr](/home/bmmcginty/git/crdo/src/crdo/task_mailer.cr)`:
-  sends overtime and failure mail
-- `[src/crdo/task_run_eligibility_evaluator.cr](/home/bmmcginty/git/crdo/src/crdo/task_run_eligibility_evaluator.cr)`:
-  decides whether a task should run now or wait
-- `[src/crdo/task_stop_handler.cr](/home/bmmcginty/git/crdo/src/crdo/task_stop_handler.cr)`:
-  applies post-stop behavior such as dependency propagation, error-command launch, and failure mail
+- `src/crdo/task_process_runner.cr`: executes task commands and writes `cron_logs/...`
+- `src/crdo/task_mailer.cr`: sends overtime and failure mail
+- `src/crdo/task_run_eligibility_evaluator.cr`: decides whether a task should run now or wait
 
-The small support record used by the evaluator lives in `[src/crdo/task_support.cr](/home/bmmcginty/git/crdo/src/crdo/task_support.cr)`.
+There is no separate `task_stop_handler.cr`. Post-stop behavior (dependency propagation, error-command launch, failure mail, retire/promote) is handled directly by `ScheduleRuntime#handle_task_stopped` and its private helpers in `src/crdo/schedule_runtime.cr`.
 
 ## Reload and persisted state
 
-Reload, runtime pass handling, and state logic are split out of `Schedule`:
+Reload planning, state persistence, and dependency reset all live in `src/crdo/schedule_store.cr`:
 
-- `[src/crdo/schedule_reload.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_reload.cr)`:
-  contains reload planning, reload application, state load/save compatibility, and dependency reset logic
-- `[src/crdo/schedule_task_runtime.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_task_runtime.cr)`:
-  contains pass planning/execution, task lifecycle side effects, and immediate completion evaluation
-- `[src/crdo/schedule_runtime.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_runtime.cr)`:
-  contains loop controller, loop runner, and event-decision side-effect application
-- `[src/crdo/schedule_support.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_support.cr)`:
-  contains the shared plan, loop-action, event-action, and pass-decision types
+- `ScheduleReloadPlanner`: pure planning — classifies each incoming task as keep/retire+defer/replace against the existing `TaskState`s
+- `ScheduleStore`: loads the crontab, applies the reload plan, restores/saves `.state` (with legacy v1 array and current v2 `{version, tasks}` formats), and resets parent-dependency flags after load/reload
+
+`src/crdo/schedule_state.cr` (`ScheduleState`) owns the resulting `Array(TaskState)` plus deferred-replacement tracking and delegates to `ScheduleStore` for the actual load/reload/save work.
 
 Reload semantics:
 
 - task name is the identity key
-- exact normalized task signature decides whether a task is "the same"
+- exact normalized task signature (`Task#signature`) decides whether a task is "the same"
 - unchanged running tasks stay running
 - changed or removed running tasks retire and drain
 - replacements for still-running changed tasks are deferred until the old task stops
@@ -150,31 +196,19 @@ Reload semantics:
 
 ## Reporting
 
-`[src/crdo/schedule_reporter.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_reporter.cr)` owns human-readable output:
+`src/crdo/schedule_reporter.cr` (`ScheduleReporter`) owns human-readable output:
 
 - start lines
 - stop lines
 - full report
 - running-only report
-- run-state transition messages
+- run-state transition and invalid-transition messages
 
-Normal operation prints start/stop lines. Full reports are on demand through `USR1`. Running-only reports are on demand through `USR2`.
+Normal operation prints start/stop lines when `global.print_report` is true. Full reports are on demand through `USR1`. Running-only reports are on demand through `USR2`.
 
-## Clock and waiting seams
+## Clock seam
 
-Two explicit seams exist for testability:
-
-- `[src/crdo/clock.cr](/home/bmmcginty/git/crdo/src/crdo/clock.cr)` and `[src/crdo/system_clock.cr](/home/bmmcginty/git/crdo/src/crdo/system_clock.cr)`
-- `[src/crdo/loop_waiter.cr](/home/bmmcginty/git/crdo/src/crdo/loop_waiter.cr)` and `[src/crdo/select_loop_waiter.cr](/home/bmmcginty/git/crdo/src/crdo/select_loop_waiter.cr)`
-
-`Clock` lets specs inject a fake time source. `LoopWaiter` lets specs observe requested wait durations without relying on real `select` sleeps.
-
-The loop now also has two explicit decision seams:
-
-- `ScheduleLoopController`:
-  translates scheduler state plus incoming `ScheduleEvent`s into high-level loop actions
-- `SchedulePassPlanner`:
-  translates current `TaskState`s into a list of concrete scheduling-pass decisions
+`src/crdo/clock.cr` (abstract `Clock`) and `src/crdo/system_clock.cr` (`SystemClock`) are the only testability seam for time. `Clock` lets specs inject a fake time source; there is no separate loop-waiter abstraction — `ScheduleRuntime` uses a real `select`/`timeout` directly, and specs drive it through a channel plus a fake `Clock`.
 
 ## How clock shifts are detected
 
@@ -182,16 +216,16 @@ Clock-shift handling matters only for `when` tasks.
 
 `every` tasks use elapsed durations, so they do not need wall-clock DST rules. They still depend on the scheduler's chosen clock source, but they are not matched against named civil-time slots.
 
-For `when` tasks, `crdo` detects clock jumps by comparing two scheduler timestamps:
+For `when` tasks, `crdo` detects clock jumps by comparing two scheduler timestamps tracked on `ScheduleState`:
 
-- `Schedule#previous_now`
-- `Schedule#current_now`
+- `previous_now`
+- the `now` captured at the start of each pass
 
-During each scheduling pass, `Schedule`:
+During each scheduling pass, `ScheduleRuntime#run_due_tasks`:
 
-1. captures `current_now = clock.now`
-2. asks each task whether it should run using both `previous_now` and `current_now`
-3. stores `previous_now = current_now` at the end of the pass
+1. captures `pass_time = clock.now`
+2. asks each task whether it should run using both `previous_now` and `pass_time` (via `TaskRunContext`)
+3. calls `ScheduleState#apply_pass_result`, which stores `previous_now = pass_time` for the next pass
 
 The evaluator uses those times like this:
 
@@ -225,34 +259,26 @@ Implementation:
 
 This is how `crdo` distinguishes two different absolute instants that both appear locally as `01:00` after a fall-back transition.
 
-## Type/support files
+## Shared types
 
-Several small shared records and enums live outside the main classes:
+`src/crdo/types.cr` holds the shared enums and records used across the codebase: `WaitReason`, `RuntimeMode`, `SchedulerEventKind`/`SchedulerEvent`, `TaskRunDecision`, `TaskStateSnapshot`, `TaskStoppedEvent`, `WhenPolicy`, `CliOptions`, plus small parsing helpers (`parse_time_span`, `parse_when_policy`, `format_time_span`, `yaml_string_array`).
 
-- `[src/crdo/types.cr](/home/bmmcginty/git/crdo/src/crdo/types.cr)`:
-  shared enums, snapshots, CLI options, `WhenPolicy`, and `ScheduleEvent`
-- `[src/crdo/task_support.cr](/home/bmmcginty/git/crdo/src/crdo/task_support.cr)`:
-  `TaskRunContext`
-- `[src/crdo/schedule_support.cr](/home/bmmcginty/git/crdo/src/crdo/schedule_support.cr)`:
-  reload-plan records plus scheduler loop/pass action types
+`TaskRunContext` (the small record passed into `TaskRunEligibilityEvaluator#evaluate`) is defined directly in `src/crdo/task_run_eligibility_evaluator.cr`. `ScheduleReloadPlanEntry`, `ScheduleReloadPlan`, and `ScheduleLoadResult` are defined directly in `src/crdo/schedule_store.cr`. There are no separate `task_support.cr` / `schedule_support.cr` files — each support record lives next to the code that uses it.
 
 ## Testing structure
 
-Specs live under `[spec/](/home/bmmcginty/git/crdo/spec)`.
-
-Important coverage areas:
+Specs live under `spec/`. Important coverage areas:
 
 - CLI parsing
 - config loading and task validation
 - `when` parsing and expansion
 - state store compatibility and atomic load behavior
 - reload planning
-- loop controller logic
 - run eligibility rules
-- stop handling
 - process runner and mailer behavior
 - fake-clock `every` behavior
 - loop timeout requests
 - `when_policy` clock-jump handling
+- signal wiring (`spec/signal_integration_spec.cr`)
 
-The main reason the current architecture is split this way is to make those pieces testable without needing to run the full scheduler process for every rule.
+The scheduler is split into `ScheduleRuntime` / `ScheduleState` / `ScheduleStore` / `TaskState` / `TaskRunEligibilityEvaluator` / `ScheduleReporter` / `TaskMailer` / `TaskProcessRunner` mainly so evaluator and store logic can be unit tested with a fake `Clock`, without needing to run the full scheduler loop for every rule.
