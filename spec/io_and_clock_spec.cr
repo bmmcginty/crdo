@@ -177,6 +177,31 @@ describe TaskState do
     schedule.mail_failures.first.log_dir.should eq(log_dir)
     schedule.mail_failures.first.message.should eq("mail unavailable")
   end
+
+  it "records error_command output and status separately from task command logs" do
+    dir = unique_tmpdir("crdo-error-command")
+    task = load_task(
+      "a",
+      "every: 1s\nerror_command: /bin/sh -c 'echo handler-out; echo handler-err >&2; exit 7'\ncommands:\n  - /bin/sh -c 'exit 23'\n",
+      "workdir: #{dir}"
+    )
+    clock = FakeClock.new(Time.local(2026, 3, 16, 12, 0, 0))
+    schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: "/tmp/unused.yml", clock: clock, output: IO::Memory.new)
+    state = TaskState.new(task: task)
+    runtime = ScheduleRuntime.new(schedule, clock)
+    events = Channel(SchedulerEvent).new(1)
+
+    state.started(clock.now)
+    state.run(clock.now, events, false, clock)
+    runtime.handle_task_stopped(events.receive.task_stopped.not_nil!)
+    sleep 0.1.seconds
+
+    log_dir = state.log_dn(state.last_start.not_nil!)
+    JSON.parse(File.read("#{log_dir}/error_command.cmdline")).as_a.map(&.as_s).should eq(["/bin/sh", "-c", "echo handler-out; echo handler-err >&2; exit 7"])
+    File.read("#{log_dir}/error_command.stdout").should contain("handler-out")
+    File.read("#{log_dir}/error_command.stderr").should contain("handler-err")
+    File.read("#{log_dir}/error_command.rc").should eq("7\n")
+  end
 end
 
 describe TaskMailer do

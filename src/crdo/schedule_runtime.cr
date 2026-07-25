@@ -131,7 +131,7 @@ class ScheduleRuntime
     if task_success?(task_state)
       propagate_success(task_state)
     else
-      run_error_command(task_state.task)
+      run_error_command(task_state)
       notify_failure(task_state)
     end
     @schedule.reporter.stopped(task_state, event.status, @schedule.next_task_wait(task_state)) if @schedule.automatic_reports?
@@ -164,12 +164,26 @@ class ScheduleRuntime
     end
   end
 
-  private def run_error_command(task : Task)
+  private def run_error_command(task_state : TaskState)
+    task = task_state.task
     return unless task.error_command
 
     spawn do
+      log_dir = task_state.log_dn(task_state.last_start.as(Time))
       command = task.hydrate_command(task.error_command.not_nil!)
-      Process.run(command: command[0], args: command[1..-1], chdir: task.global.workdir)
+      File.write("#{log_dir}/error_command.cmdline", command.to_json)
+      stdout = File.open("#{log_dir}/error_command.stdout", "wb")
+      stderr = File.open("#{log_dir}/error_command.stderr", "wb")
+      begin
+        status = Process.run(command: command[0], args: command[1..-1], output: stdout, error: stderr, chdir: task.global.workdir)
+        File.write("#{log_dir}/error_command.rc", "#{status.exit_code}\n")
+      rescue e
+        stderr << "\n#{e.inspect}"
+        File.write("#{log_dir}/error_command.rc", "999\n")
+      ensure
+        stdout.close
+        stderr.close
+      end
     end
     sleep 0.seconds
   end
