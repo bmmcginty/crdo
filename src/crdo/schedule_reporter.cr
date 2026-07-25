@@ -59,4 +59,8 @@ class ScheduleReporter
   def invalid_transition(requested : SchedulerEventKind, current : RuntimeMode)
     @output.puts "requested run state #{requested} but currently have runtime mode #{current}"
   end
+
+  def reload_failed(error : Exception)
+    @output.puts "reload failed: #{error.message || error.inspect}"
+  end
 end

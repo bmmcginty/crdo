@@ -337,6 +337,24 @@ describe ScheduleState do
     schedule["task2"]?.should_not be_nil
   end
 
+  it "keeps the old schedule when a reload fails" do
+    dir = unique_tmpdir("crdo-reload-failure")
+    path = write_schedule_config(
+      "#{dir}/root.yml",
+      "task1:\n  every: 1d\n  commands:\n    - /bin/true\n"
+    )
+    output = IO::Memory.new
+    schedule = ScheduleState.new(test: false, immediate: false, filter: Set(String).new, crontab: path, output: output)
+    runtime = ScheduleRuntime.new(schedule, schedule.clock)
+    schedule.load_initial_state
+    File.write(path, "global:\n  workdir: .\ntask1:\n  every: 1d\n  commands: /bin/true\n")
+
+    runtime.handle_event(SchedulerEvent.reload_requested)
+
+    schedule["task1"]?.should_not be_nil
+    output.to_s.should contain("reload failed:")
+  end
+
   it "computes the next wait timeout instead of busy-spinning for every schedules" do
     dir = unique_tmpdir("crdo-loop-wait")
     path = write_schedule_config(

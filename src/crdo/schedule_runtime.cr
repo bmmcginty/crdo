@@ -86,14 +86,18 @@ class ScheduleRuntime
     end
   end
 
-  private def handle_event(event : SchedulerEvent) : Bool
+  def handle_event(event : SchedulerEvent) : Bool
     case event.kind
     when .task_stopped?
       handle_task_stopped(event.task_stopped.not_nil!)
       return @schedule.immediate && all_tasks_have_run_once_since?(@schedule.states, @schedule.filter, @loop_start_time)
     when .reload_requested?
-      @schedule.reload_config
-      reset_autosave_timer
+      begin
+        @schedule.reload_config
+        reset_autosave_timer
+      rescue e
+        @schedule.reporter.reload_failed(e)
+      end
     when .save_requested?
       return invalid_transition(event.kind) unless @mode.normal?
       @schedule.save_state
