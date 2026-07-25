@@ -77,26 +77,6 @@ class TaskState
     end
   end
 
-  def set_state(data : JSON::Any)
-    @last_start = if t = data["last_start"]?.try(&.as_i64?)
-                    Time.unix(t).to_local
-                  elsif t = data["last_start_ms"]?.try(&.as_i64?)
-                    Time.unix_ms(t).to_local
-                  else
-                    nil
-                  end
-    @last_stop = if t = data["last_stop"]?.try(&.as_i64?)
-                   Time.unix(t).to_local
-                 elsif t = data["last_stop_ms"]?.try(&.as_i64?)
-                   Time.unix_ms(t).to_local
-                 else
-                   nil
-                 end
-    @last_status = data["last_status"]?.try(&.as_i?) || -1
-    @parent_status.clear
-    @overtime_occured = false
-  end
-
   def has_run_successfully_once_since?(ts : Time)
     success? && @last_start && @last_stop && @last_stop.not_nil! >= @last_start.not_nil! && @last_start.not_nil! >= ts
   end
