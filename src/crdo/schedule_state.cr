@@ -16,7 +16,7 @@ class ScheduleState
   @mail_failures = [] of MailFailure
 
   delegate :select, to: @states
-  getter immediate, filter, clock, previous_now, autosave, reporter, mail_failures
+  getter immediate, filter, clock, previous_now, autosave, reporter, mail_failures, reasons
 
   def initialize(@test, @immediate, @filter, @crontab, @clock : Clock = SystemClock.new, output : IO = STDOUT)
     @reporter = ScheduleReporter.new(@clock, output)

@@ -63,4 +63,13 @@ class ScheduleReporter
   def reload_failed(error : Exception)
     @output.puts "reload failed: #{error.message || error.inspect}"
   end
+
+  def immediate_not_runnable(reasons : Array(TaskRunDecision))
+    @output.puts "--now cannot run selected tasks:"
+    reasons.each do |decision|
+      next if decision.reason.none? || decision.reason.already_running?
+
+      @output.puts "#{decision.task.name}: #{decision.reason} #{decision.text}"
+    end
+  end
 end

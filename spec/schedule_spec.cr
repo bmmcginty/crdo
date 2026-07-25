@@ -240,6 +240,34 @@ describe ScheduleRuntime do
     stopped.status.should_not eq(0)
     File.exists?(marker).should be_false
   end
+
+  it "lets --now exit after a selected task fails once" do
+    dir = unique_tmpdir("crdo-now-failure")
+    path = write_schedule_config(
+      "#{dir}/root.yml",
+      "a:\n  every: 1d\n  commands:\n    - /bin/sh -c 'exit 23'\n"
+    )
+    schedule = ScheduleState.new(test: false, immediate: true, filter: Set{"a"}, crontab: path, output: IO::Memory.new)
+
+    ScheduleRuntime.new(schedule, schedule.clock).run(Channel(SchedulerEvent).new(1))
+
+    schedule["a"].last_status.should eq(23)
+  end
+
+  it "lets --now report selected tasks that cannot run" do
+    dir = unique_tmpdir("crdo-now-disabled")
+    path = write_schedule_config(
+      "#{dir}/root.yml",
+      "a:\n  every: 1d\n  disabled: true\n  commands:\n    - /bin/true\n"
+    )
+    output = IO::Memory.new
+    schedule = ScheduleState.new(test: false, immediate: true, filter: Set{"a"}, crontab: path, output: output)
+
+    ScheduleRuntime.new(schedule, schedule.clock).run(Channel(SchedulerEvent).new(1))
+
+    output.to_s.should contain("--now cannot run selected tasks:")
+    output.to_s.should contain("a: Disabled")
+  end
 end
 
 describe ScheduleState do

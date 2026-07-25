@@ -28,6 +28,10 @@ class ScheduleRuntime
 
       if @mode.normal?
         run_due_tasks(event_channel)
+        if immediate_cannot_make_progress?
+          @schedule.reporter.immediate_not_runnable(@schedule.reasons)
+          return
+        end
       end
 
       event = wait_for_event(event_channel, @shortest_timeout)
@@ -90,7 +94,7 @@ class ScheduleRuntime
     case event.kind
     when .task_stopped?
       handle_task_stopped(event.task_stopped.not_nil!)
-      return @schedule.immediate && all_tasks_have_run_once_since?(@schedule.states, @schedule.filter, @loop_start_time)
+      return @schedule.immediate && all_tasks_have_stopped_once_since?(@schedule.states, @schedule.filter, @loop_start_time)
     when .reload_requested?
       begin
         @schedule.reload_config
@@ -203,14 +207,21 @@ class ScheduleRuntime
     @mode.done?
   end
 
-  private def all_tasks_have_run_once_since?(task_states : Array(TaskState), filter : Set(String), start_time : Time) : Bool
+  private def all_tasks_have_stopped_once_since?(task_states : Array(TaskState), filter : Set(String), start_time : Time) : Bool
     do_filter = filter.size > 0
     task_states.each do |task_state|
       next if do_filter && !filter.includes?(task_state.task.name)
 
-      return false unless task_state.has_run_successfully_once_since?(start_time)
+      return false unless task_state.has_stopped_once_since?(start_time)
     end
     true
+  end
+
+  private def immediate_cannot_make_progress?
+    return false unless @schedule.immediate
+    return false unless @schedule.running.empty?
+    return false if @schedule.reasons.empty?
+    @schedule.reasons.none? { |reason| reason.reason.none? || reason.reason.already_running? }
   end
 
   private def terminate_running_tasks

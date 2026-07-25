@@ -29,6 +29,9 @@ class TaskRunEligibilityEvaluator
     if task.parent && !(context.immediate && context.filter.includes?(task.name)) && state.parent_status[task.parent.not_nil!] == false
       return TaskRunDecision.new(task: task, reason: WaitReason::Depend, text: task.parent.not_nil!, wait_time: 0.seconds)
     end
+    if immediate_target?(task, context)
+      return TaskRunDecision.new(task: task, reason: WaitReason::None, text: "", wait_time: 0.seconds)
+    end
     if task.when_specs.size > 0
       if task.when_specs.any? { |matcher| (slot = matcher.current_slot_start?(context.now)) && slot_runnable?(task, matcher, state, slot.not_nil!) }
         return TaskRunDecision.new(task: task, reason: WaitReason::None, text: "", wait_time: 0.seconds)
@@ -56,6 +59,10 @@ class TaskRunEligibilityEvaluator
       return TaskRunDecision.new(task: task, reason: WaitReason::None, text: "", wait_time: 0.seconds)
     end
     raise Exception.new("task does not have every or when")
+  end
+
+  private def immediate_target?(task : Task, context : TaskRunContext)
+    context.immediate && (context.filter.empty? || context.filter.includes?(task.name))
   end
 
   def slot_runnable?(task : Task, matcher : TimeMatcher, state : TaskState, slot : Time)

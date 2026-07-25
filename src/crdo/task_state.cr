@@ -102,6 +102,10 @@ class TaskState
     success? && @last_start && @last_stop && @last_stop.not_nil! >= @last_start.not_nil! && @last_start.not_nil! >= ts
   end
 
+  def has_stopped_once_since?(ts : Time)
+    @last_start && @last_stop && @last_stop.not_nil! >= @last_start.not_nil! && @last_start.not_nil! >= ts
+  end
+
   def running?
     @running
   end
