@@ -8,6 +8,14 @@ describe GlobalConfig do
   end
 end
 
+describe "parse_time_span" do
+  it "rejects spans with trailing junk" do
+    expect_raises(Exception, /invalid span 5m junk/) do
+      parse_time_span("5m junk")
+    end
+  end
+end
+
 describe Task do
   it "requires commands to be an array" do
     expect_raises(Exception, /commands must be an array/) do

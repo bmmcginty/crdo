@@ -168,7 +168,7 @@ def parse_when_policy(value : YAML::Any)
 end
 
 def parse_time_span(txt)
-  t = txt.match(/(\d+)([smhd])/)
+  t = txt.match(/^(\d+)([smhd])$/)
   if !t
     raise Exception.new("invalid span #{txt}")
   end
